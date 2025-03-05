@@ -59,9 +59,9 @@
     "vaul": "^0.9.6",
     "zod": "^3.24.1",
     "jspdf": "latest",
+    "tailwindcss": "latest",
     "uuid": "latest",
     "jspdf-autotable": "latest",
-    "chart.js": "latest",
     "@supabase/supabase-js": "latest"
   },
   "devDependencies": {
