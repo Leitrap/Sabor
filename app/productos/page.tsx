@@ -1,5 +1,7 @@
 "use client"
 
+import { Label } from "@/components/ui/label"
+
 import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 
 import { useState, useEffect } from "react"
@@ -15,6 +17,8 @@ import {
   ClipboardList,
   PackageOpen,
   Moon,
+  Sun,
+  Database,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -47,6 +51,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { CustomerSelector } from "@/components/customer-selector"
+import { ProductManager } from "@/components/product-manager"
+import { useTheme } from "next-themes"
 
 // Categorías de productos
 const categories = [
@@ -70,9 +76,11 @@ export default function ProductsPage() {
   const [discountPercent, setDiscountPercent] = useState(0)
   const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false)
   const [isAddressDialogOpen, setIsAddressDialogOpen] = useState(false)
+  const [isProductManagerOpen, setIsProductManagerOpen] = useState(false)
   const router = useRouter()
   const { vendorInfo, clearVendorInfo } = useVendor()
   const { toast } = useToast()
+  const { theme, setTheme } = useTheme()
 
   // Cargar el stock guardado
   useEffect(() => {
@@ -153,6 +161,10 @@ export default function ProductsPage() {
     })
   }
 
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark")
+  }
+
   if (!vendorInfo) {
     return null // No renderizar nada si no hay vendedor (redirigirá a login)
   }
@@ -208,6 +220,10 @@ export default function ProductsPage() {
                     <span>Estadísticas</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setIsProductManagerOpen(true)}>
+                    <Database className="mr-2 h-4 w-4" />
+                    <span>Gestionar Productos</span>
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setIsDiscountDialogOpen(true)}>
                     <Tag className="mr-2 h-4 w-4" />
                     <span>Aplicar descuento</span>
@@ -216,13 +232,18 @@ export default function ProductsPage() {
                     <Filter className="mr-2 h-4 w-4" />
                     <span>Dirección de entrega</span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      document.documentElement.classList.toggle("dark")
-                    }}
-                  >
-                    <Moon className="mr-2 h-4 w-4" />
-                    <span>Cambiar a modo oscuro</span>
+                  <DropdownMenuItem onClick={toggleTheme}>
+                    {theme === "dark" ? (
+                      <>
+                        <Sun className="mr-2 h-4 w-4" />
+                        <span>Cambiar a modo claro</span>
+                      </>
+                    ) : (
+                      <>
+                        <Moon className="mr-2 h-4 w-4" />
+                        <span>Cambiar a modo oscuro</span>
+                      </>
+                    )}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setIsLogoutDialogOpen(true)}>
@@ -330,6 +351,9 @@ export default function ProductsPage() {
 
       <ProductCarousel isOpen={isCarouselOpen} onClose={() => setIsCarouselOpen(false)} />
 
+      {/* Gestor de productos */}
+      <ProductManager isOpen={isProductManagerOpen} onClose={() => setIsProductManagerOpen(false)} />
+
       {/* Diálogo de descuento */}
       <Dialog open={isDiscountDialogOpen} onOpenChange={setIsDiscountDialogOpen}>
         <DialogContent>
@@ -368,9 +392,9 @@ export default function ProductsPage() {
           </DialogHeader>
           <div className="py-4">
             <div className="space-y-2">
-              <label htmlFor="customer-address" className="text-sm font-medium">
+              <Label htmlFor="customer-address" className="text-sm font-medium">
                 Dirección
-              </label>
+              </Label>
               <Input
                 id="customer-address"
                 placeholder="Calle, número, ciudad, etc."

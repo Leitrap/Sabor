@@ -129,12 +129,12 @@ export const products = [
   },
 ]
 
-// Función para actualizar el stock de un producto
+// Modificar la función updateProductStock para permitir stock negativo
 export function updateProductStock(productId: number, quantity: number): void {
   const productIndex = products.findIndex((p) => p.id === productId)
   if (productIndex !== -1) {
     products[productIndex].stock -= quantity
-    // Ya no limitamos el stock a 0, permitimos valores negativos
+    // Permitimos valores negativos para indicar faltantes
 
     // Guardar en Supabase
     updateSupabaseStock(productId, products[productIndex].stock).catch((error) =>
@@ -193,7 +193,7 @@ export function getProductStock(productId: number): number {
   return product ? product.stock : 0
 }
 
-// Función para verificar si hay suficiente stock
+// Función para verificar si hay suficiente stock - siempre retorna true para permitir agregar sin importar el stock
 export function hasEnoughStock(productId: number, quantity: number): boolean {
   // Siempre retornamos true para permitir agregar productos sin importar el stock
   return true

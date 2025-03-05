@@ -168,12 +168,13 @@ export default function ResumenPage() {
     localStorage.setItem("sabornuts-pending-orders", JSON.stringify(pendingOrders))
   }
 
+  // Modificar la función generatePDF para usar el color verde en Sabornuts
   const generatePDF = () => {
     const doc = new jsPDF()
 
     // Add logo and header
     doc.setFontSize(22)
-    doc.setTextColor(80, 54, 42) // Color marrón #50362a
+    doc.setTextColor(0, 192, 173) // Color verde #00c0ad
     doc.setFont("Helvetica", "bold") // Usar Helvetica como aproximación a Recoleta
     doc.text("Sabornuts", 105, 20, { align: "center" })
 
@@ -263,18 +264,23 @@ export default function ResumenPage() {
 
     // Para dispositivos móviles, usar un enfoque diferente para guardar el PDF
     if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
-      // Crear un blob y abrir en una nueva ventana
+      // Crear un blob y forzar la descarga con un iframe temporal
       const pdfBlob = doc.output("blob")
       const blobUrl = URL.createObjectURL(pdfBlob)
 
-      // Crear un enlace y forzar la descarga
+      const filename = `PedidoSabornuts (${customerName} ${formattedDateFilename}).pdf`
+
+      // Crear un enlace invisible y forzar clic
       const link = document.createElement("a")
       link.href = blobUrl
-      link.download = `PedidoSabornuts (${customerName} ${formattedDateFilename}).pdf`
+      link.download = filename
+      link.style.display = "none"
+      document.body.appendChild(link)
       link.click()
 
-      // Limpiar
+      // Limpiar después de un breve retraso
       setTimeout(() => {
+        document.body.removeChild(link)
         URL.revokeObjectURL(blobUrl)
       }, 100)
     } else {
