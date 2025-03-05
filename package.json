@@ -61,7 +61,8 @@
     "jspdf": "latest",
     "@supabase/supabase-js": "latest",
     "uuid": "latest",
-    "jspdf-autotable": "latest"
+    "jspdf-autotable": "latest",
+    "chart.js": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

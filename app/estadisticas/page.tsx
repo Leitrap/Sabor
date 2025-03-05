@@ -3,40 +3,147 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { formatCurrency } from "@/lib/utils"
-import { ArrowLeft, FileText } from "lucide-react"
-import { useVendor } from "@/components/vendor-provider"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { getOrders } from "@/lib/supabase/utils"
+import { ArrowLeft, TrendingUp, ShoppingBag, Users, Package } from "lucide-react"
+import { useVendor } from "@/components/vendor-provider"
+import { getOrders, getProducts, getCustomers, type Order } from "@/lib/supabase"
+import { formatCurrency, generateChartColors, calculatePercentage } from "@/lib/utils"
+import dynamic from "next/dynamic"
 
-type OrderHistoryItem = {
-  id: string
-  date: string
-  customerName: string
-  customerAddress?: string
-  vendorName: string
-  storeLocation?: string
-  items: {
-    productId: number
-    productName: string
-    price: number
-    quantity: number
-  }[]
-  total: number
-  discount: number
-  finalTotal: number
-  vendor_name: string
+// Importar Chart.js dinámicamente para evitar errores de SSR
+const Chart = dynamic(
+  () =>
+    import("chart.js/auto").then((mod) => {
+      // Registrar los componentes necesarios
+      mod.Chart.register(
+        mod.CategoryScale,
+        mod.LinearScale,
+        mod.BarController,
+        mod.BarElement,
+        mod.PieController,
+        mod.ArcElement,
+        mod.LineController,
+        mod.LineElement,
+        mod.PointElement,
+        mod.Tooltip,
+        mod.Legend,
+      )
+      return mod.Chart
+    }),
+  { ssr: false },
+)
+
+// Componente para renderizar un gráfico de barras
+const BarChart = ({ data, options }: { data: any; options: any }) => {
+  const canvasRef = React.useRef<HTMLCanvasElement>(null)
+  const chartRef = React.useRef<any>(null)
+
+  React.useEffect(() => {
+    if (!canvasRef.current) return
+
+    // Destruir el gráfico anterior si existe
+    if (chartRef.current) {
+      chartRef.current.destroy()
+    }
+
+    // Crear nuevo gráfico
+    chartRef.current = new Chart(canvasRef.current, {
+      type: "bar",
+      data,
+      options,
+    })
+
+    // Limpiar al desmontar
+    return () => {
+      if (chartRef.current) {
+        chartRef.current.destroy()
+      }
+    }
+  }, [data, options])
+
+  return <canvas ref={canvasRef} />
 }
 
+// Componente para renderizar un gráfico de líneas
+const LineChart = ({ data, options }: { data: any; options: any }) => {
+  const canvasRef = React.useRef<HTMLCanvasElement>(null)
+  const chartRef = React.useRef<any>(null)
+
+  React.useEffect(() => {
+    if (!canvasRef.current) return
+
+    // Destruir el gráfico anterior si existe
+    if (chartRef.current) {
+      chartRef.current.destroy()
+    }
+
+    // Crear nuevo gráfico
+    chartRef.current = new Chart(canvasRef.current, {
+      type: "line",
+      data,
+      options,
+    })
+
+    // Limpiar al desmontar
+    return () => {
+      if (chartRef.current) {
+        chartRef.current.destroy()
+      }
+    }
+  }, [data, options])
+
+  return <canvas ref={canvasRef} />
+}
+
+// Componente para renderizar un gráfico de pastel
+const PieChart = ({ data, options }: { data: any; options: any }) => {
+  const canvasRef = React.useRef<HTMLCanvasElement>(null)
+  const chartRef = React.useRef<any>(null)
+
+  React.useEffect(() => {
+    if (!canvasRef.current) return
+
+    // Destruir el gráfico anterior si existe
+    if (chartRef.current) {
+      chartRef.current.destroy()
+    }
+
+    // Crear nuevo gráfico
+    chartRef.current = new Chart(canvasRef.current, {
+      type: "pie",
+      data,
+      options,
+    })
+
+    // Limpiar al desmontar
+    return () => {
+      if (chartRef.current) {
+        chartRef.current.destroy()
+      }
+    }
+  }, [data, options])
+
+  return <canvas ref={canvasRef} />
+}
+
+// Importar React para useRef
+import React from "react"
+
 export default function EstadisticasPage() {
-  const [orderHistory, setOrderHistory] = useState<OrderHistoryItem[]>([])
-  const [timeFilter, setTimeFilter] = useState("all")
-  const [vendorFilter, setVendorFilter] = useState("all")
-  const [vendors, setVendors] = useState<string[]>([])
-  const [topProducts, setTopProducts] = useState<{ id: number; name: string; quantity: number; total: number }[]>([])
-  const [salesByDate, setSalesByDate] = useState<{ date: string; orders: number; total: number }[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState("ventas")
+  const [stats, setStats] = useState({
+    totalSales: 0,
+    totalOrders: 0,
+    averageOrderValue: 0,
+    totalCustomers: 0,
+    topProducts: [] as { name: string; quantity: number; revenue: number }[],
+    salesByDate: {} as Record<string, number>,
+    salesByProduct: {} as Record<string, number>,
+    salesByCategory: {} as Record<string, number>,
+  })
   const router = useRouter()
   const { vendorInfo } = useVendor()
 
@@ -47,199 +154,125 @@ export default function EstadisticasPage() {
     }
   }, [vendorInfo, router])
 
-  // useEffect(() => {
-  //   // Cargar historial de pedidos desde localStorage
-  //   const savedHistory = localStorage.getItem("sabornuts-order-history")
-  //   if (savedHistory) {
-  //     try {
-  //       const history = JSON.parse(savedHistory) as OrderHistoryItem[]
-  //       setOrderHistory(history)
-
-  //       // Extraer lista de vendedores únicos
-  //       const uniqueVendors = Array.from(new Set(history.map((order) => order.vendorName)))
-  //       setVendors(uniqueVendors)
-
-  //       // Procesar datos iniciales
-  //       processData(history)
-  //     } catch (e) {
-  //       console.error("Error al cargar el historial de pedidos", e)
-  //     }
-  //   }
-  // }, [])
-
-  // Mejorar la carga de datos de estadísticas
+  // Cargar datos y calcular estadísticas
   useEffect(() => {
-    // Cargar historial de pedidos desde Supabase
-    const loadOrderHistory = async () => {
+    const loadData = async () => {
+      setIsLoading(true)
       try {
-        const history = await getOrders()
-        setOrderHistory(history)
+        // Cargar pedidos
+        const loadedOrders = await getOrders()
+        setOrders(loadedOrders)
 
-        // Extraer lista de vendedores únicos
-        const uniqueVendors = Array.from(new Set(history.map((order) => order.vendor_name)))
-        setVendors(uniqueVendors)
+        // Cargar productos y clientes para estadísticas adicionales
+        const products = await getProducts()
+        const customers = await getCustomers()
 
-        // Procesar datos iniciales
-        processData(history)
+        // Calcular estadísticas
+        calculateStats(loadedOrders, products, customers)
       } catch (error) {
-        console.error("Error loading order history:", error)
-        // Fallback a localStorage
-        const savedHistory = localStorage.getItem("sabornuts-order-history")
-        if (savedHistory) {
+        console.error("Error loading data:", error)
+        // Intentar cargar desde localStorage como fallback
+        const savedOrders = localStorage.getItem("sabornuts-order-history")
+        if (savedOrders) {
           try {
-            const history = JSON.parse(savedHistory)
-            setOrderHistory(history)
-
-            // Extraer lista de vendedores únicos
-            const uniqueVendors = Array.from(new Set(history.map((order) => order.vendorName || order.vendor_name)))
-            setVendors(uniqueVendors)
-
-            // Procesar datos iniciales
-            processData(history)
+            const parsedOrders = JSON.parse(savedOrders)
+            setOrders(parsedOrders)
+            calculateStats(parsedOrders, [], [])
           } catch (e) {
-            console.error("Error al cargar el historial de pedidos", e)
+            console.error("Error parsing local orders", e)
           }
         }
+      } finally {
+        setIsLoading(false)
       }
     }
 
-    loadOrderHistory()
+    loadData()
   }, [])
 
-  // Filtrar datos según los filtros seleccionados
-  useEffect(() => {
-    let filteredHistory = [...orderHistory]
+  const calculateStats = (orders: Order[], products: any[], customers: any[]) => {
+    // Inicializar estadísticas
+    const totalSales = orders.reduce((sum, order) => sum + (order.final_total || order.total), 0)
+    const totalOrders = orders.length
+    const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0
+    const totalCustomers = new Set(orders.map((order) => order.customer_name)).size
 
-    // Filtrar por tiempo
-    if (timeFilter !== "all") {
-      const now = new Date()
-      const filterDate = new Date()
+    // Productos más vendidos
+    const productSales: Record<number, { name: string; quantity: number; revenue: number }> = {}
 
-      switch (timeFilter) {
-        case "today":
-          filterDate.setHours(0, 0, 0, 0)
-          break
-        case "week":
-          filterDate.setDate(now.getDate() - 7)
-          break
-        case "month":
-          filterDate.setMonth(now.getMonth() - 1)
-          break
-        case "year":
-          filterDate.setFullYear(now.getFullYear() - 1)
-          break
-      }
-
-      filteredHistory = filteredHistory.filter((order) => new Date(order.date) >= filterDate)
-    }
-
-    // Filtrar por vendedor
-    if (vendorFilter !== "all") {
-      filteredHistory = filteredHistory.filter(
-        (order) => order.vendorName === vendorFilter || order.vendor_name === vendorFilter,
-      )
-    }
-
-    // Procesar datos filtrados
-    processData(filteredHistory)
-  }, [timeFilter, vendorFilter, orderHistory])
-
-  const processData = (data: OrderHistoryItem[]) => {
-    // Calcular productos más vendidos
-    const productSales: Record<number, { name: string; quantity: number; total: number }> = {}
-
-    data.forEach((order) => {
+    orders.forEach((order) => {
       order.items.forEach((item) => {
-        if (!productSales[item.productId]) {
-          productSales[item.productId] = {
-            name: item.productName,
+        if (!productSales[item.product_id]) {
+          productSales[item.product_id] = {
+            name: item.product_name,
             quantity: 0,
-            total: 0,
+            revenue: 0,
           }
         }
-
-        productSales[item.productId].quantity += item.quantity
-        productSales[item.productId].total += item.price * item.quantity
+        productSales[item.product_id].quantity += item.quantity
+        productSales[item.product_id].revenue += item.price * item.quantity
       })
     })
 
-    const topProductsArray = Object.entries(productSales)
-      .map(([id, data]) => ({
-        id: Number.parseInt(id),
-        name: data.name,
-        quantity: data.quantity,
-        total: data.total,
-      }))
-      .sort((a, b) => b.quantity - a.quantity)
+    const topProducts = Object.values(productSales)
+      .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10)
 
-    setTopProducts(topProductsArray)
-
-    // Calcular ventas por fecha
-    const salesByDateMap: Record<string, { orders: number; total: number }> = {}
-
-    data.forEach((order) => {
+    // Ventas por fecha
+    const salesByDate: Record<string, number> = {}
+    orders.forEach((order) => {
       const date = new Date(order.date).toLocaleDateString()
-
-      if (!salesByDateMap[date]) {
-        salesByDateMap[date] = {
-          orders: 0,
-          total: 0,
-        }
+      if (!salesByDate[date]) {
+        salesByDate[date] = 0
       }
-
-      salesByDateMap[date].orders += 1
-      salesByDateMap[date].total += order.finalTotal || order.total
+      salesByDate[date] += order.final_total || order.total
     })
 
-    const salesByDateArray = Object.entries(salesByDateMap)
-      .map(([date, data]) => ({
-        date,
-        orders: data.orders,
-        total: data.total,
-      }))
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-
-    setSalesByDate(salesByDateArray)
-  }
-
-  const exportToCSV = () => {
-    // Crear encabezados CSV
-    let csv = "Fecha,Cliente,Vendedor,Productos,Cantidad,Subtotal,Descuento,Total\n"
-
-    // Agregar filas
-    orderHistory.forEach((order) => {
-      const date = new Date(order.date).toLocaleDateString()
-      const discount = order.discount ? `${order.discount}%` : "0%"
-      const total = order.finalTotal || order.total
-
-      // Crear una fila por cada producto en el pedido
+    // Ventas por producto
+    const salesByProduct: Record<string, number> = {}
+    orders.forEach((order) => {
       order.items.forEach((item) => {
-        const row = [
-          date,
-          order.customerName,
-          order.vendorName,
-          item.productName,
-          item.quantity,
-          formatCurrency(item.price * item.quantity).replace(",", ""),
-          discount,
-          formatCurrency(total).replace(",", ""),
-        ]
-
-        csv += row.join(",") + "\n"
+        if (!salesByProduct[item.product_name]) {
+          salesByProduct[item.product_name] = 0
+        }
+        salesByProduct[item.product_name] += item.price * item.quantity
       })
     })
 
-    // Crear y descargar el archivo
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement("a")
-    link.setAttribute("href", url)
-    link.setAttribute("download", `ventas_sabornuts_${new Date().toLocaleDateString().replace(/\//g, "-")}.csv`)
-    link.style.visibility = "hidden"
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    // Ventas por categoría (usando productos cargados)
+    const salesByCategory: Record<string, number> = {}
+    const productCategories: Record<number, string> = {}
+
+    // Crear mapeo de productos a categorías
+    products.forEach((product) => {
+      if (product.category_id) {
+        productCategories[product.id] = product.category_id.toString()
+      }
+    })
+
+    // Calcular ventas por categoría
+    orders.forEach((order) => {
+      order.items.forEach((item) => {
+        const categoryId = productCategories[item.product_id]
+        const categoryName = categoryId || "Sin categoría"
+
+        if (!salesByCategory[categoryName]) {
+          salesByCategory[categoryName] = 0
+        }
+        salesByCategory[categoryName] += item.price * item.quantity
+      })
+    })
+
+    setStats({
+      totalSales,
+      totalOrders,
+      averageOrderValue,
+      totalCustomers,
+      topProducts,
+      salesByDate,
+      salesByProduct,
+      salesByCategory,
+    })
   }
 
   if (!vendorInfo) {
@@ -249,183 +282,277 @@ export default function EstadisticasPage() {
   return (
     <main className="min-h-screen container mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Estadísticas de Ventas</h1>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={exportToCSV}>
-            <FileText className="mr-2 h-4 w-4" />
-            Exportar CSV
-          </Button>
-          <Button variant="outline" onClick={() => router.push("/productos")}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Volver
-          </Button>
-        </div>
+        <h1 className="text-2xl font-bold">Estadísticas</h1>
+        <Button variant="outline" onClick={() => router.push("/productos")}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Volver
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <div>
-          <label htmlFor="time-filter" className="block text-sm font-medium mb-1">
-            Período
-          </label>
-          <Select value={timeFilter} onValueChange={setTimeFilter}>
-            <SelectTrigger id="time-filter">
-              <SelectValue placeholder="Seleccionar período" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todo el tiempo</SelectItem>
-              <SelectItem value="today">Hoy</SelectItem>
-              <SelectItem value="week">Última semana</SelectItem>
-              <SelectItem value="month">Último mes</SelectItem>
-              <SelectItem value="year">Último año</SelectItem>
-            </SelectContent>
-          </Select>
+      {isLoading ? (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">Cargando estadísticas...</p>
         </div>
-        <div>
-          <label htmlFor="vendor-filter" className="block text-sm font-medium mb-1">
-            Vendedor
-          </label>
-          <Select value={vendorFilter} onValueChange={setVendorFilter}>
-            <SelectTrigger id="vendor-filter">
-              <SelectValue placeholder="Seleccionar vendedor" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los vendedores</SelectItem>
-              {vendors.map((vendor) => (
-                <SelectItem key={vendor} value={vendor}>
-                  {vendor}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <Tabs defaultValue="summary">
-        <TabsList className="mb-6">
-          <TabsTrigger value="summary">Resumen</TabsTrigger>
-          <TabsTrigger value="products">Productos</TabsTrigger>
-          <TabsTrigger value="dates">Ventas por Fecha</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="summary">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Total de Ventas</CardTitle>
-                <CardDescription>Monto total de ventas</CardDescription>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Ventas Totales</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">
-                  {formatCurrency(orderHistory.reduce((sum, order) => sum + (order.finalTotal || order.total), 0))}
+                <div className="flex items-center">
+                  <TrendingUp className="h-5 w-5 text-primary mr-2" />
+                  <span className="text-2xl font-bold">{formatCurrency(stats.totalSales)}</span>
                 </div>
               </CardContent>
             </Card>
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Pedidos</CardTitle>
-                <CardDescription>Número total de pedidos</CardDescription>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Pedidos Totales</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">{orderHistory.length}</div>
+                <div className="flex items-center">
+                  <ShoppingBag className="h-5 w-5 text-primary mr-2" />
+                  <span className="text-2xl font-bold">{stats.totalOrders}</span>
+                </div>
               </CardContent>
             </Card>
             <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Ticket Promedio</CardTitle>
-                <CardDescription>Valor promedio por pedido</CardDescription>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Valor Promedio</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-3xl font-bold">
-                  {orderHistory.length > 0
-                    ? formatCurrency(
-                        orderHistory.reduce((sum, order) => sum + (order.finalTotal || order.total), 0) /
-                          orderHistory.length,
-                      )
-                    : formatCurrency(0)}
+                <div className="flex items-center">
+                  <Package className="h-5 w-5 text-primary mr-2" />
+                  <span className="text-2xl font-bold">{formatCurrency(stats.averageOrderValue)}</span>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Clientes Totales</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center">
+                  <Users className="h-5 w-5 text-primary mr-2" />
+                  <span className="text-2xl font-bold">{stats.totalCustomers}</span>
                 </div>
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
 
-        <TabsContent value="products">
-          <Card>
-            <CardHeader>
-              <CardTitle>Productos Más Vendidos</CardTitle>
-              <CardDescription>Los 10 productos con mayor cantidad de ventas</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="py-2 px-4 text-left">Producto</th>
-                      <th className="py-2 px-4 text-right">Cantidad</th>
-                      <th className="py-2 px-4 text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {topProducts.length === 0 ? (
-                      <tr>
-                        <td colSpan={3} className="py-4 px-4 text-center text-muted-foreground">
-                          No hay datos disponibles
-                        </td>
-                      </tr>
-                    ) : (
-                      topProducts.map((product) => (
-                        <tr key={product.id} className="border-b">
-                          <td className="py-3 px-4">{product.name}</td>
-                          <td className="py-3 px-4 text-right">{product.quantity}</td>
-                          <td className="py-3 px-4 text-right">{formatCurrency(product.total)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="mb-6">
+              <TabsTrigger value="ventas">Ventas</TabsTrigger>
+              <TabsTrigger value="productos">Productos</TabsTrigger>
+              <TabsTrigger value="categorias">Categorías</TabsTrigger>
+            </TabsList>
 
-        <TabsContent value="dates">
-          <Card>
-            <CardHeader>
-              <CardTitle>Ventas por Fecha</CardTitle>
-              <CardDescription>Resumen de ventas agrupadas por fecha</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="py-2 px-4 text-left">Fecha</th>
-                      <th className="py-2 px-4 text-right">Pedidos</th>
-                      <th className="py-2 px-4 text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {salesByDate.length === 0 ? (
-                      <tr>
-                        <td colSpan={3} className="py-4 px-4 text-center text-muted-foreground">
-                          No hay datos disponibles
-                        </td>
-                      </tr>
+            <TabsContent value="ventas">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Ventas por Fecha</CardTitle>
+                </CardHeader>
+                <CardContent className="h-80">
+                  {Object.keys(stats.salesByDate).length > 0 ? (
+                    <LineChart
+                      data={{
+                        labels: Object.keys(stats.salesByDate).sort(),
+                        datasets: [
+                          {
+                            label: "Ventas",
+                            data: Object.keys(stats.salesByDate)
+                              .sort()
+                              .map((date) => stats.salesByDate[date]),
+                            borderColor: "#00c0ad",
+                            backgroundColor: "rgba(0, 192, 173, 0.1)",
+                            tension: 0.3,
+                            fill: true,
+                          },
+                        ],
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                          y: {
+                            beginAtZero: true,
+                            ticks: {
+                              callback: (value) => formatCurrency(Number(value)),
+                            },
+                          },
+                        },
+                        plugins: {
+                          tooltip: {
+                            callbacks: {
+                              label: (context) => `Ventas: ${formatCurrency(context.parsed.y)}`,
+                            },
+                          },
+                        },
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <p className="text-muted-foreground">No hay datos de ventas disponibles</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="productos">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Productos Más Vendidos</CardTitle>
+                  </CardHeader>
+                  <CardContent className="h-80">
+                    {stats.topProducts.length > 0 ? (
+                      <BarChart
+                        data={{
+                          labels: stats.topProducts.map((p) => p.name),
+                          datasets: [
+                            {
+                              label: "Ventas",
+                              data: stats.topProducts.map((p) => p.revenue),
+                              backgroundColor: generateChartColors(stats.topProducts.length),
+                            },
+                          ],
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          scales: {
+                            y: {
+                              beginAtZero: true,
+                              ticks: {
+                                callback: (value) => formatCurrency(Number(value)),
+                              },
+                            },
+                            x: {
+                              ticks: {
+                                callback: function (value) {
+                                  const label = this.getLabelForValue(Number(value))
+                                  return label.length > 10 ? label.substring(0, 10) + "..." : label
+                                },
+                              },
+                            },
+                          },
+                          plugins: {
+                            tooltip: {
+                              callbacks: {
+                                label: (context) => `Ventas: ${formatCurrency(context.parsed.y)}`,
+                              },
+                            },
+                            legend: {
+                              display: false,
+                            },
+                          },
+                        }}
+                      />
                     ) : (
-                      salesByDate.map((item, index) => (
-                        <tr key={index} className="border-b">
-                          <td className="py-3 px-4">{item.date}</td>
-                          <td className="py-3 px-4 text-right">{item.orders}</td>
-                          <td className="py-3 px-4 text-right">{formatCurrency(item.total)}</td>
-                        </tr>
-                      ))
+                      <div className="flex items-center justify-center h-full">
+                        <p className="text-muted-foreground">No hay datos de productos disponibles</p>
+                      </div>
                     )}
-                  </tbody>
-                </table>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Distribución de Ventas por Producto</CardTitle>
+                  </CardHeader>
+                  <CardContent className="h-80">
+                    {Object.keys(stats.salesByProduct).length > 0 ? (
+                      <PieChart
+                        data={{
+                          labels: Object.keys(stats.salesByProduct),
+                          datasets: [
+                            {
+                              data: Object.values(stats.salesByProduct),
+                              backgroundColor: generateChartColors(Object.keys(stats.salesByProduct).length),
+                            },
+                          ],
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            tooltip: {
+                              callbacks: {
+                                label: (context) => {
+                                  const value = context.raw as number
+                                  const total = (context.chart.data.datasets[0].data as number[]).reduce(
+                                    (sum, val) => sum + (val as number),
+                                    0,
+                                  )
+                                  const percentage = calculatePercentage(value, total)
+                                  return `${context.label}: ${formatCurrency(value)} (${percentage}%)`
+                                },
+                              },
+                            },
+                          },
+                        }}
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full">
+                        <p className="text-muted-foreground">No hay datos de productos disponibles</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            </TabsContent>
+
+            <TabsContent value="categorias">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Ventas por Categoría</CardTitle>
+                </CardHeader>
+                <CardContent className="h-80">
+                  {Object.keys(stats.salesByCategory).length > 0 ? (
+                    <PieChart
+                      data={{
+                        labels: Object.keys(stats.salesByCategory),
+                        datasets: [
+                          {
+                            data: Object.values(stats.salesByCategory),
+                            backgroundColor: generateChartColors(Object.keys(stats.salesByCategory).length),
+                          },
+                        ],
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          tooltip: {
+                            callbacks: {
+                              label: (context) => {
+                                const value = context.raw as number
+                                const total = (context.chart.data.datasets[0].data as number[]).reduce(
+                                  (sum, val) => sum + (val as number),
+                                  0,
+                                )
+                                const percentage = calculatePercentage(value, total)
+                                return `${context.label}: ${formatCurrency(value)} (${percentage}%)`
+                              },
+                            },
+                          },
+                        },
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <p className="text-muted-foreground">No hay datos de categorías disponibles</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </>
+      )}
     </main>
   )
 }
