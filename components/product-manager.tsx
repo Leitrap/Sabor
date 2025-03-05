@@ -20,7 +20,6 @@ import {
   deleteCategory,
   type Product,
   type Category,
-  supabase,
 } from "@/lib/supabase"
 import { Plus, Pencil, Trash2, Tag, Search, Upload } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -132,47 +131,8 @@ export function ProductManager({
     }
   }
 
-  // Función para cargar imágenes a Supabase Storage
-  const uploadImage = async (file: File): Promise<string> => {
-    setIsUploading(true)
-    setUploadProgress(0)
-
-    try {
-      // Crear un nombre único para el archivo
-      const fileExt = file.name.split(".").pop()
-      const fileName = `${Date.now()}.${fileExt}`
-      const filePath = `product-images/${fileName}`
-
-      // Subir el archivo a Supabase Storage
-      const { data, error } = await supabase.storage.from("sabornuts").upload(filePath, file, {
-        cacheControl: "3600",
-        upsert: false,
-        onUploadProgress: (progress) => {
-          const percent = Math.round((progress.loaded / progress.total) * 100)
-          setUploadProgress(percent)
-        },
-      })
-
-      if (error) throw error
-
-      // Obtener la URL pública del archivo
-      const { data: urlData } = supabase.storage.from("sabornuts").getPublicUrl(filePath)
-
-      return urlData.publicUrl
-    } catch (error) {
-      console.error("Error uploading image:", error)
-      toast({
-        title: "Error",
-        description: "No se pudo cargar la imagen. Intente nuevamente.",
-        variant: "destructive",
-      })
-      return "/placeholder.svg?height=200&width=200"
-    } finally {
-      setIsUploading(false)
-    }
-  }
-
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Función simplificada para cargar imágenes usando FileReader en lugar de Supabase Storage
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
 
@@ -196,16 +156,45 @@ export function ProductManager({
       return
     }
 
-    // Subir la imagen
-    const imageUrl = await uploadImage(file)
+    setIsUploading(true)
 
-    // Actualizar el formulario con la URL de la imagen
-    setProductForm((prev) => ({ ...prev, image: imageUrl }))
+    // Usar FileReader para convertir la imagen a base64
+    const reader = new FileReader()
+    reader.onloadstart = () => {
+      setUploadProgress(0)
+    }
 
-    toast({
-      title: "Imagen cargada",
-      description: "La imagen se ha cargado correctamente.",
-    })
+    reader.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const progress = Math.round((event.loaded / event.total) * 100)
+        setUploadProgress(progress)
+      }
+    }
+
+    reader.onload = (e) => {
+      const result = e.target?.result as string
+      if (result) {
+        setProductForm((prev) => ({ ...prev, image: result }))
+        setIsUploading(false)
+        setUploadProgress(100)
+
+        toast({
+          title: "Imagen cargada",
+          description: "La imagen se ha cargado correctamente.",
+        })
+      }
+    }
+
+    reader.onerror = () => {
+      setIsUploading(false)
+      toast({
+        title: "Error",
+        description: "No se pudo cargar la imagen. Intente nuevamente.",
+        variant: "destructive",
+      })
+    }
+
+    reader.readAsDataURL(file)
   }
 
   // Funciones para gestionar productos
@@ -808,7 +797,7 @@ export function ProductManager({
             <Button variant="outline" onClick={() => setIsAddProductOpen(false)} disabled={isLoading || isUploading}>
               Cancelar
             </Button>
-            <Button onClick={handleAddProduct} disabled={isLoading || isUploading}>
+            <Button onClick={handleAddProduct} disabled={isLoading || isUploading} className="bg-[#50362a] hover:bg-[#3d2a21]">
               {isLoading ? "Guardando..." : "Guardar"}
             </Button>
           </DialogFooter>
@@ -875,6 +864,9 @@ export function ProductManager({
                 {isUploading && <Progress value={uploadProgress} className="h-2 w-full" />}
               </div>
             </div>
+            <div className="  className="h-2 w-full" />}
+              </div>
+            </div>\
             <div className="space-y-2">
               <Label htmlFor="edit-product-stock">Stock</Label>
               <Input
@@ -911,114 +903,106 @@ export function ProductManager({
             <Button variant="outline" onClick={() => setIsEditProductOpen(false)} disabled={isLoading || isUploading}>
               Cancelar
             </Button>
-            <Button onClick={handleUpdateProduct} disabled={isLoading || isUploading}>
+            <Button onClick={handleUpdateProduct} disabled={isLoading || isUploading} className="bg-[#50362a] hover:bg-[#3d2a21]">
               {isLoading ? "Actualizando..." : "Actualizar"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* Diálogo para eliminar producto */}
-      <AlertDialog open={isDeleteProductOpen} onOpenChange={setIsDeleteProductOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta acción eliminará permanentemente el producto {productForm.name} y no se puede deshacer.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isLoading}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteProductConfirm}
-              disabled={isLoading}
-              className="bg-destructive text-destructive-foreground"
-            >
-              {isLoading ? "Eliminando..." : "Eliminar"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Diálogo para agregar categoría */}
-      <Dialog open={isAddCategoryOpen} onOpenChange={setIsAddCategoryOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Agregar Categoría</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="category-name">Nombre de la categoría</Label>
-              <Input
-                id="category-name"
-                placeholder="Nombre de la categoría"
-                value={categoryForm.name}
-                onChange={(e) => setCategoryForm((prev) => ({ ...prev, name: e.target.value }))}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddCategoryOpen(false)} disabled={isLoading}>
-              Cancelar
-            </Button>
-            <Button onClick={handleAddCategory} disabled={isLoading}>
-              {isLoading ? "Guardando..." : "Guardar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Diálogo para editar categoría */}
-      <Dialog open={isEditCategoryOpen} onOpenChange={setIsEditCategoryOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar Categoría</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label htmlFor="edit-category-name">Nombre de la categoría</Label>
-              <Input
-                id="edit-category-name"
-                placeholder="Nombre de la categoría"
-                value={categoryForm.name}
-                onChange={(e) => setCategoryForm((prev) => ({ ...prev, name: e.target.value }))}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditCategoryOpen(false)} disabled={isLoading}>
-              Cancelar
-            </Button>
-            <Button onClick={handleUpdateCategory} disabled={isLoading}>
-              {isLoading ? "Actualizando..." : "Actualizar"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Diálogo para eliminar categoría */}
-      <AlertDialog open={isDeleteCategoryOpen} onOpenChange={setIsDeleteCategoryOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta acción eliminará permanentemente la categoría {categoryForm.name} y no se puede deshacer. Los
-              productos asociados a esta categoría quedarán sin categoría.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isLoading}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteCategoryConfirm}
-              disabled={isLoading}
-              className="bg-destructive text-destructive-foreground"
-            >
-              {isLoading ? "Eliminando..." : "Eliminar"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </Dialog>
+  ;<AlertDialog open={isDeleteProductOpen} onOpenChange={setIsDeleteProductOpen}>
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+        <AlertDialogDescription>
+          Esta acción eliminará permanentemente el producto {productForm.name} y no se puede deshacer.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel disabled={isLoading}>Cancelar</AlertDialogCancel>
+        <AlertDialogAction
+          onClick={handleDeleteProductConfirm}
+          disabled={isLoading}
+          className="bg-destructive text-destructive-foreground"
+        >
+          {isLoading ? "Eliminando..." : "Eliminar"}
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
+  ;<Dialog open={isAddCategoryOpen} onOpenChange={setIsAddCategoryOpen}>
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Agregar Categoría</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4 py-2">
+        <div className="space-y-2">
+          <Label htmlFor="category-name">Nombre de la categoría</Label>
+          <Input
+            id="category-name"
+            placeholder="Nombre de la categoría"
+            value={categoryForm.name}
+            onChange={(e) => setCategoryForm((prev) => ({ ...prev, name: e.target.value }))}
+          />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={() => setIsAddCategoryOpen(false)} disabled={isLoading}>
+          Cancelar
+        </Button>
+        <Button onClick={handleAddCategory} disabled={isLoading} className="bg-[#50362a] hover:bg-[#3d2a21]">
+          {isLoading ? "Guardando..." : "Guardar"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+  ;<Dialog open={isEditCategoryOpen} onOpenChange={setIsEditCategoryOpen}>
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Editar Categoría</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4 py-2">
+        <div className="space-y-2">
+          <Label htmlFor="edit-category-name">Nombre de la categoría</Label>
+          <Input
+            id="edit-category-name"
+            placeholder="Nombre de la categoría"
+            value={categoryForm.name}
+            onChange={(e) => setCategoryForm((prev) => ({ ...prev, name: e.target.value }))}
+          />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={() => setIsEditCategoryOpen(false)} disabled={isLoading}>
+          Cancelar
+        </Button>
+        <Button onClick={handleUpdateCategory} disabled={isLoading} className="bg-[#50362a] hover:bg-[#3d2a21]">
+          {isLoading ? "Actualizando..." : "Actualizar"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+  ;<AlertDialog open={isDeleteCategoryOpen} onOpenChange={setIsDeleteCategoryOpen}>
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+        <AlertDialogDescription>
+          Esta acción eliminará permanentemente la categoría {categoryForm.name} y no se puede deshacer. Los productos
+          asociados a esta categoría quedarán sin categoría.
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel disabled={isLoading}>Cancelar</AlertDialogCancel>
+        <AlertDialogAction
+          onClick={handleDeleteCategoryConfirm}
+          disabled={isLoading}
+          className="bg-destructive text-destructive-foreground"
+        >
+          {isLoading ? "Eliminando..." : "Eliminar"}
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
+  </Dialog>
   )
 }
 
