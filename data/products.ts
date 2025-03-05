@@ -146,7 +146,7 @@ export function updateProductStock(productId: number, quantity: number): void {
   }
 }
 
-// Función para cargar el stock guardado
+// Mejorar la función loadSavedStock para mejor manejo de errores
 export async function loadSavedStock(): Promise<void> {
   try {
     // Intentar cargar desde Supabase primero
@@ -216,6 +216,8 @@ export function restoreProductStock(productId: number, quantity: number): void {
 
 // Inicializar cargando el stock guardado
 if (typeof window !== "undefined") {
-  loadSavedStock()
+  loadSavedStock().catch((error) => {
+    console.error("Error initializing stock:", error)
+  })
 }
 

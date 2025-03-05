@@ -49,32 +49,60 @@ export type Order = {
 }
 
 // Funciones para productos
+// Modificar la función getProducts para manejar mejor los errores y el estado offline
 export async function getProducts(): Promise<Product[]> {
-  const { data, error } = await supabase.from("products").select("*").order("id")
+  try {
+    const { data, error } = await supabase.from("products").select("*").order("id")
 
-  if (error) {
-    console.error("Error fetching products:", error)
-    // Fallback a localStorage si hay error
+    if (error) throw error
+
+    if (data && data.length > 0) {
+      // Guardar en localStorage como respaldo
+      localStorage.setItem("sabornuts-stock", JSON.stringify(data))
+      return data
+    }
+  } catch (e) {
+    console.error("Error fetching products:", e)
+  }
+
+  // Fallback a localStorage si hay error o no hay datos
+  const savedStock = localStorage.getItem("sabornuts-stock")
+  if (savedStock) {
+    try {
+      return JSON.parse(savedStock)
+    } catch (e) {
+      console.error("Error parsing local stock", e)
+    }
+  }
+
+  // Si todo falla, devolver los productos predefinidos
+  return []
+}
+
+// Modificar la función updateProductStock para mejor manejo de errores
+export async function updateProductStock(productId: number, newStock: number): Promise<void> {
+  try {
+    const { error } = await supabase.from("products").update({ stock: newStock }).eq("id", productId)
+
+    if (error) throw error
+
+    // Actualizar localStorage como respaldo
     const savedStock = localStorage.getItem("sabornuts-stock")
     if (savedStock) {
       try {
-        return JSON.parse(savedStock)
+        const products = JSON.parse(savedStock)
+        const productIndex = products.findIndex((p: Product) => p.id === productId)
+        if (productIndex !== -1) {
+          products[productIndex].stock = newStock
+          localStorage.setItem("sabornuts-stock", JSON.stringify(products))
+        }
       } catch (e) {
-        console.error("Error parsing local stock", e)
+        console.error("Error updating local stock", e)
       }
     }
-    return []
-  }
-
-  return data || []
-}
-
-export async function updateProductStock(productId: number, newStock: number): Promise<void> {
-  const { error } = await supabase.from("products").update({ stock: newStock }).eq("id", productId)
-
-  if (error) {
-    console.error("Error updating product stock:", error)
-    // Fallback a localStorage
+  } catch (e) {
+    console.error("Error updating product stock:", e)
+    // Actualizar solo localStorage si falla Supabase
     const savedStock = localStorage.getItem("sabornuts-stock")
     if (savedStock) {
       try {
@@ -136,51 +164,68 @@ export async function addCustomer(customer: Customer): Promise<Customer | null> 
 }
 
 // Funciones para pedidos
+// Mejorar las funciones de pedidos para mejor manejo de errores
 export async function getOrders(): Promise<Order[]> {
-  const { data, error } = await supabase
-    .from("orders")
-    .select("*, items:order_items(*)")
-    .order("date", { ascending: false })
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*, items:order_items(*)")
+      .order("date", { ascending: false })
 
-  if (error) {
-    console.error("Error fetching orders:", error)
-    // Fallback a localStorage
-    const savedOrders = localStorage.getItem("sabornuts-order-history")
-    if (savedOrders) {
-      try {
-        return JSON.parse(savedOrders)
-      } catch (e) {
-        console.error("Error parsing local orders", e)
-      }
+    if (error) throw error
+
+    if (data && data.length > 0) {
+      // Guardar en localStorage como respaldo
+      localStorage.setItem("sabornuts-order-history", JSON.stringify(data))
+      return data
     }
-    return []
+  } catch (e) {
+    console.error("Error fetching orders:", e)
   }
 
-  return data || []
+  // Fallback a localStorage
+  const savedOrders = localStorage.getItem("sabornuts-order-history")
+  if (savedOrders) {
+    try {
+      return JSON.parse(savedOrders)
+    } catch (e) {
+      console.error("Error parsing local orders", e)
+    }
+  }
+
+  return []
 }
 
 export async function getPendingOrders(): Promise<Order[]> {
-  const { data, error } = await supabase
-    .from("orders")
-    .select("*, items:order_items(*)")
-    .not("status", "eq", "entregado")
-    .order("date", { ascending: false })
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*, items:order_items(*)")
+      .not("status", "eq", "entregado")
+      .order("date", { ascending: false })
 
-  if (error) {
-    console.error("Error fetching pending orders:", error)
-    // Fallback a localStorage
-    const savedPendingOrders = localStorage.getItem("sabornuts-pending-orders")
-    if (savedPendingOrders) {
-      try {
-        return JSON.parse(savedPendingOrders)
-      } catch (e) {
-        console.error("Error parsing local pending orders", e)
-      }
+    if (error) throw error
+
+    if (data && data.length > 0) {
+      // Guardar en localStorage como respaldo
+      localStorage.setItem("sabornuts-pending-orders", JSON.stringify(data))
+      return data
     }
-    return []
+  } catch (e) {
+    console.error("Error fetching pending orders:", e)
   }
 
-  return data || []
+  // Fallback a localStorage
+  const savedPendingOrders = localStorage.getItem("sabornuts-pending-orders")
+  if (savedPendingOrders) {
+    try {
+      return JSON.parse(savedPendingOrders)
+    } catch (e) {
+      console.error("Error parsing local pending orders", e)
+    }
+  }
+
+  return []
 }
 
 export async function addOrder(order: Order): Promise<Order | null> {

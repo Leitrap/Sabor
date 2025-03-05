@@ -25,16 +25,38 @@ export default function AjusteStockPage() {
     }
   }, [vendorInfo, router])
 
-  // Cargar el stock actual
+  // Mejorar el manejo de errores y la carga de datos
   useEffect(() => {
-    loadSavedStock()
-    setProductStock(
-      products.map((product) => ({
-        id: product.id,
-        stock: product.stock,
-      })),
-    )
-  }, [])
+    // Cargar el stock actual
+    const loadStock = async () => {
+      try {
+        await loadSavedStock()
+        setProductStock(
+          products.map((product) => ({
+            id: product.id,
+            stock: product.stock,
+          })),
+        )
+      } catch (error) {
+        console.error("Error loading stock:", error)
+        toast({
+          title: "Error",
+          description: "No se pudo cargar el stock. Usando datos locales.",
+          variant: "destructive",
+        })
+
+        // Usar los datos locales como respaldo
+        setProductStock(
+          products.map((product) => ({
+            id: product.id,
+            stock: product.stock,
+          })),
+        )
+      }
+    }
+
+    loadStock()
+  }, [toast])
 
   // Filtrar productos según búsqueda
   const filteredProducts = products.filter((product) => {

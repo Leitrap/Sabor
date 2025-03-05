@@ -26,6 +26,24 @@ type OrderHistoryItem = {
   finalTotal: number
 }
 
+async function getOrders(): Promise<OrderHistoryItem[]> {
+  // Simula una llamada a una API
+  return new Promise((resolve) => {
+    const savedHistory = localStorage.getItem("sabornuts-order-history")
+    if (savedHistory) {
+      try {
+        const history = JSON.parse(savedHistory)
+        resolve(history)
+      } catch (e) {
+        console.error("Error al cargar el historial de pedidos", e)
+        resolve([])
+      }
+    } else {
+      resolve([])
+    }
+  })
+}
+
 export default function HistorialPage() {
   const [orderHistory, setOrderHistory] = useState<OrderHistoryItem[]>([])
   const [filteredHistory, setFilteredHistory] = useState<OrderHistoryItem[]>([])
@@ -41,18 +59,31 @@ export default function HistorialPage() {
     }
   }, [vendorInfo, router])
 
+  // Mejorar la carga de datos del historial
   useEffect(() => {
-    // Cargar historial de pedidos desde localStorage
-    const savedHistory = localStorage.getItem("sabornuts-order-history")
-    if (savedHistory) {
+    // Cargar historial de pedidos
+    const loadOrderHistory = async () => {
       try {
-        const history = JSON.parse(savedHistory)
-        setOrderHistory(history)
-        setFilteredHistory(history)
-      } catch (e) {
-        console.error("Error al cargar el historial de pedidos", e)
+        const orders = await getOrders()
+        setOrderHistory(orders)
+        setFilteredHistory(orders)
+      } catch (error) {
+        console.error("Error loading order history:", error)
+        // Fallback a localStorage
+        const savedHistory = localStorage.getItem("sabornuts-order-history")
+        if (savedHistory) {
+          try {
+            const history = JSON.parse(savedHistory)
+            setOrderHistory(history)
+            setFilteredHistory(history)
+          } catch (e) {
+            console.error("Error al cargar el historial de pedidos", e)
+          }
+        }
       }
     }
+
+    loadOrderHistory()
   }, [])
 
   // Filtrar historial según término de búsqueda

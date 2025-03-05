@@ -1,5 +1,7 @@
 "use client"
 
+import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+
 import { useState, useEffect } from "react"
 import {
   ShoppingCart,
@@ -24,14 +26,12 @@ import { useCart } from "@/components/cart-provider"
 import { products, loadSavedStock } from "@/data/products"
 import { formatCurrency } from "@/lib/utils"
 import type { Product } from "@/components/cart-provider"
-import { ThemeToggle } from "@/components/theme-toggle"
 import { useRouter } from "next/navigation"
 import { useVendor } from "@/components/vendor-provider"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu"
@@ -164,7 +164,6 @@ export default function ProductsPage() {
           <div className="flex items-center justify-between">
             <h1 className="text-2xl md:text-3xl sabornuts-logo text-primary">Sabornuts</h1>
             <div className="flex items-center gap-2">
-              <ThemeToggle />
               <Button
                 variant="outline"
                 size="icon"
@@ -173,37 +172,6 @@ export default function ProductsPage() {
               >
                 <Layers className="h-5 w-5" />
                 <span className="sr-only">Carrusel de productos</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => router.push("/pedidos-en-curso")}
-                title="Pedidos en curso"
-              >
-                <ClipboardList className="h-5 w-5" />
-                <span className="sr-only">Pedidos en curso</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => router.push("/historial")}
-                title="Historial de pedidos"
-              >
-                <History className="h-5 w-5" />
-                <span className="sr-only">Historial de pedidos</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => router.push("/ajuste-stock")}
-                title="Ajuste de Stock"
-              >
-                <PackageOpen className="h-5 w-5" />
-                <span className="sr-only">Ajuste de Stock</span>
-              </Button>
-              <Button variant="outline" size="icon" onClick={() => router.push("/estadisticas")} title="Estadísticas">
-                <BarChart3 className="h-5 w-5" />
-                <span className="sr-only">Estadísticas</span>
               </Button>
               <Button variant="outline" size="icon" onClick={() => setIsCartOpen(!isCartOpen)} className="relative">
                 <ShoppingCart className="h-5 w-5" />
@@ -222,6 +190,23 @@ export default function ProductsPage() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>Opciones</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => router.push("/pedidos-en-curso")}>
+                    <ClipboardList className="mr-2 h-4 w-4" />
+                    <span>Pedidos en curso</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/historial")}>
+                    <History className="mr-2 h-4 w-4" />
+                    <span>Historial de pedidos</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/ajuste-stock")}>
+                    <PackageOpen className="mr-2 h-4 w-4" />
+                    <span>Ajuste de Stock</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => router.push("/estadisticas")}>
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                    <span>Estadísticas</span>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setIsDiscountDialogOpen(true)}>
                     <Tag className="mr-2 h-4 w-4" />
@@ -292,7 +277,7 @@ export default function ProductsPage() {
                   <p className="text-muted-foreground">No se encontraron productos</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
                   {filteredProducts.map((product) => (
                     <Card key={product.id} className="overflow-hidden transition-all hover:shadow-md">
                       <div className="aspect-square overflow-hidden bg-muted">
@@ -302,16 +287,16 @@ export default function ProductsPage() {
                           className="h-full w-full object-cover transition-transform hover:scale-105"
                         />
                       </div>
-                      <CardContent className="p-4">
+                      <CardContent className="p-3">
                         <div className="flex justify-between items-start mb-1">
-                          <h3 className="font-medium line-clamp-1">{product.name}</h3>
+                          <h3 className="font-medium line-clamp-1 text-sm">{product.name}</h3>
                           {category.id !== "all" && (
                             <Badge variant="outline" className="text-xs">
                               {categories.find((c) => c.products?.includes(product.id))?.name || ""}
                             </Badge>
                           )}
                         </div>
-                        <div className="flex justify-between items-center mb-3">
+                        <div className="flex justify-between items-center mb-2">
                           <p className="text-sm text-muted-foreground">{formatCurrency(product.price)}</p>
                           <p className={`text-xs ${product.stock < 10 ? "text-destructive" : "text-muted-foreground"}`}>
                             Stock: {product.stock}

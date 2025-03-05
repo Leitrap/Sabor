@@ -9,6 +9,7 @@ import { ArrowLeft, FileText } from "lucide-react"
 import { useVendor } from "@/components/vendor-provider"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { getOrders } from "@/lib/supabase/utils"
 
 type OrderHistoryItem = {
   id: string
@@ -26,6 +27,7 @@ type OrderHistoryItem = {
   total: number
   discount: number
   finalTotal: number
+  vendor_name: string
 }
 
 export default function EstadisticasPage() {
@@ -45,24 +47,63 @@ export default function EstadisticasPage() {
     }
   }, [vendorInfo, router])
 
+  // useEffect(() => {
+  //   // Cargar historial de pedidos desde localStorage
+  //   const savedHistory = localStorage.getItem("sabornuts-order-history")
+  //   if (savedHistory) {
+  //     try {
+  //       const history = JSON.parse(savedHistory) as OrderHistoryItem[]
+  //       setOrderHistory(history)
+
+  //       // Extraer lista de vendedores únicos
+  //       const uniqueVendors = Array.from(new Set(history.map((order) => order.vendorName)))
+  //       setVendors(uniqueVendors)
+
+  //       // Procesar datos iniciales
+  //       processData(history)
+  //     } catch (e) {
+  //       console.error("Error al cargar el historial de pedidos", e)
+  //     }
+  //   }
+  // }, [])
+
+  // Mejorar la carga de datos de estadísticas
   useEffect(() => {
-    // Cargar historial de pedidos desde localStorage
-    const savedHistory = localStorage.getItem("sabornuts-order-history")
-    if (savedHistory) {
+    // Cargar historial de pedidos desde Supabase
+    const loadOrderHistory = async () => {
       try {
-        const history = JSON.parse(savedHistory) as OrderHistoryItem[]
+        const history = await getOrders()
         setOrderHistory(history)
 
         // Extraer lista de vendedores únicos
-        const uniqueVendors = Array.from(new Set(history.map((order) => order.vendorName)))
+        const uniqueVendors = Array.from(new Set(history.map((order) => order.vendor_name)))
         setVendors(uniqueVendors)
 
         // Procesar datos iniciales
         processData(history)
-      } catch (e) {
-        console.error("Error al cargar el historial de pedidos", e)
+      } catch (error) {
+        console.error("Error loading order history:", error)
+        // Fallback a localStorage
+        const savedHistory = localStorage.getItem("sabornuts-order-history")
+        if (savedHistory) {
+          try {
+            const history = JSON.parse(savedHistory)
+            setOrderHistory(history)
+
+            // Extraer lista de vendedores únicos
+            const uniqueVendors = Array.from(new Set(history.map((order) => order.vendorName || order.vendor_name)))
+            setVendors(uniqueVendors)
+
+            // Procesar datos iniciales
+            processData(history)
+          } catch (e) {
+            console.error("Error al cargar el historial de pedidos", e)
+          }
+        }
       }
     }
+
+    loadOrderHistory()
   }, [])
 
   // Filtrar datos según los filtros seleccionados
@@ -94,7 +135,9 @@ export default function EstadisticasPage() {
 
     // Filtrar por vendedor
     if (vendorFilter !== "all") {
-      filteredHistory = filteredHistory.filter((order) => order.vendorName === vendorFilter)
+      filteredHistory = filteredHistory.filter(
+        (order) => order.vendorName === vendorFilter || order.vendor_name === vendorFilter,
+      )
     }
 
     // Procesar datos filtrados
