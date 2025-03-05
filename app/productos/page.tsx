@@ -91,7 +91,14 @@ export default function ProductsPage() {
     try {
       // Cargar productos desde Supabase
       const loadedProducts = await getProducts()
-      setAllProducts(loadedProducts)
+
+      if (loadedProducts && loadedProducts.length > 0) {
+        setAllProducts(loadedProducts)
+      } else {
+        // Si no hay productos, usar los datos locales como respaldo
+        console.warn("No products found in Supabase, using local data")
+        setAllProducts(products)
+      }
 
       // Cargar categorías desde Supabase
       const loadedCategories = await getCategories()
@@ -106,7 +113,10 @@ export default function ProductsPage() {
         productsByCategory[category.id] = []
       })
 
-      loadedProducts.forEach((product) => {
+      // Usar los productos que acabamos de cargar (loadedProducts o products)
+      const productsToUse = loadedProducts && loadedProducts.length > 0 ? loadedProducts : products
+
+      productsToUse.forEach((product) => {
         if (product.category_id) {
           if (!productsByCategory[product.category_id]) {
             productsByCategory[product.category_id] = []
@@ -127,7 +137,7 @@ export default function ProductsPage() {
       setCategories(uiCategories)
 
       // Filtrar productos según la categoría activa
-      filterProducts(loadedProducts, activeCategory, searchTerm, uiCategories)
+      filterProducts(productsToUse, activeCategory, searchTerm, uiCategories)
     } catch (error) {
       console.error("Error loading products and categories:", error)
       toast({
@@ -142,7 +152,7 @@ export default function ProductsPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [toast, activeCategory, categories, searchTerm])
+  }, [toast, activeCategory, searchTerm])
 
   // Filtrar productos según búsqueda y categoría
   const filterProducts = useCallback(
@@ -304,6 +314,7 @@ export default function ProductsPage() {
 
   const handleProductsUpdated = () => {
     // Recargar productos y categorías cuando se actualicen desde el gestor
+    console.log("Products updated, reloading data...")
     loadProductsAndCategories()
   }
 

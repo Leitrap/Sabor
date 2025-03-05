@@ -62,9 +62,9 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "tailwindcss": "latest",
-    "@supabase/supabase-js": "latest",
     "uuid": "latest",
-    "jspdf-autotable": "latest"
+    "jspdf-autotable": "latest",
+    "@supabase/supabase-js": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

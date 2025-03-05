@@ -239,8 +239,19 @@ export function ProductManager({
       })
 
       if (newProduct) {
-        setProducts((prev) => [...prev, newProduct])
-        setFilteredProducts((prev) => [...prev, newProduct])
+        // Actualizar el estado local con el nuevo producto
+        setProducts((prev) => {
+          const updated = [...prev, newProduct]
+          // También actualizar los productos filtrados si es necesario
+          setFilteredProducts((prevFiltered) => {
+            if (!searchTerm.trim() || newProduct.name.toLowerCase().includes(searchTerm.toLowerCase())) {
+              return [...prevFiltered, newProduct]
+            }
+            return prevFiltered
+          })
+          return updated
+        })
+
         setIsAddProductOpen(false)
         resetProductForm()
 
@@ -297,8 +308,26 @@ export function ProductManager({
       })
 
       if (updatedProduct) {
-        setProducts((prev) => prev.map((p) => (p.id === updatedProduct.id ? updatedProduct : p)))
-        setFilteredProducts((prev) => prev.map((p) => (p.id === updatedProduct.id ? updatedProduct : p)))
+        // Actualizar el estado local con el producto actualizado
+        setProducts((prev) => {
+          const updated = prev.map((p) => (p.id === updatedProduct.id ? updatedProduct : p))
+          // También actualizar los productos filtrados
+          setFilteredProducts((prevFiltered) => {
+            const shouldInclude =
+              !searchTerm.trim() || updatedProduct.name.toLowerCase().includes(searchTerm.toLowerCase())
+            const exists = prevFiltered.some((p) => p.id === updatedProduct.id)
+
+            if (exists) {
+              return prevFiltered.map((p) => (p.id === updatedProduct.id ? updatedProduct : p))
+            } else if (shouldInclude) {
+              return [...prevFiltered, updatedProduct]
+            } else {
+              return prevFiltered.filter((p) => p.id !== updatedProduct.id)
+            }
+          })
+          return updated
+        })
+
         setIsEditProductOpen(false)
         resetProductForm()
 
@@ -329,8 +358,14 @@ export function ProductManager({
     try {
       await deleteProduct(productForm.id)
 
-      setProducts((prev) => prev.filter((p) => p.id !== productForm.id))
-      setFilteredProducts((prev) => prev.filter((p) => p.id !== productForm.id))
+      // Actualizar el estado local eliminando el producto
+      setProducts((prev) => {
+        const updated = prev.filter((p) => p.id !== productForm.id)
+        // También actualizar los productos filtrados
+        setFilteredProducts((prevFiltered) => prevFiltered.filter((p) => p.id !== productForm.id))
+        return updated
+      })
+
       setIsDeleteProductOpen(false)
       resetProductForm()
 
@@ -369,6 +404,7 @@ export function ProductManager({
       const newCategory = await addCategory(categoryForm.name.trim())
 
       if (newCategory) {
+        // Actualizar el estado local con la nueva categoría
         setCategories((prev) => [...prev, newCategory])
         setIsAddCategoryOpen(false)
         resetCategoryForm()
@@ -413,6 +449,7 @@ export function ProductManager({
       })
 
       if (updatedCategory) {
+        // Actualizar el estado local con la categoría actualizada
         setCategories((prev) => prev.map((c) => (c.id === updatedCategory.id ? updatedCategory : c)))
         setIsEditCategoryOpen(false)
         resetCategoryForm()
@@ -444,6 +481,7 @@ export function ProductManager({
     try {
       await deleteCategory(categoryForm.id)
 
+      // Actualizar el estado local eliminando la categoría
       setCategories((prev) => prev.filter((c) => c.id !== categoryForm.id))
       setIsDeleteCategoryOpen(false)
       resetCategoryForm()

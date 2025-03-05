@@ -156,6 +156,8 @@ export type Product = {
 export type Category = {
   id: number
   name: string
+  address: string
+  created_at?: string
 }
 
 export type Customer = {
@@ -194,7 +196,11 @@ export async function getProducts(): Promise<Product[]> {
   try {
     const { data, error } = await supabase.from("products").select("*").order("id")
 
-    if (error) throw error
+    if (error) {
+      console.error("Error fetching products from Supabase:", error)
+      // Si hay un error, intentamos obtener los datos del localStorage
+      return getProductsFromLocalStorage()
+    }
 
     if (data && data.length > 0) {
       // Guardar en localStorage como respaldo
@@ -202,12 +208,18 @@ export async function getProducts(): Promise<Product[]> {
         localStorage.setItem("sabornuts-stock", JSON.stringify(data))
       }
       return data
+    } else {
+      // Si no hay datos en Supabase, intentamos obtener del localStorage
+      return getProductsFromLocalStorage()
     }
   } catch (e) {
-    console.error("Error fetching products:", e)
+    console.error("Exception fetching products:", e)
+    return getProductsFromLocalStorage()
   }
+}
 
-  // Fallback a localStorage si hay error o no hay datos
+// Función auxiliar para obtener productos del localStorage
+function getProductsFromLocalStorage(): Product[] {
   if (isBrowser) {
     const savedStock = localStorage.getItem("sabornuts-stock")
     if (savedStock) {
@@ -217,9 +229,18 @@ export async function getProducts(): Promise<Product[]> {
         console.error("Error parsing local stock", e)
       }
     }
+
+    // Si no hay datos en localStorage, usamos los productos predefinidos
+    // Importamos los productos desde data/products
+    const { products } = require("@/data/products")
+
+    // Guardamos los productos predefinidos en localStorage para futuros usos
+    localStorage.setItem("sabornuts-stock", JSON.stringify(products))
+
+    return products
   }
 
-  // Si todo falla, devolver un array vacío
+  // Si no estamos en el navegador, devolvemos un array vacío
   return []
 }
 
@@ -269,96 +290,114 @@ export async function updateProductStock(productId: number, newStock: number): P
 export async function addProduct(product: Omit<Product, "id">): Promise<Product | null> {
   try {
     // Obtener el último ID para asignar uno nuevo
-    const { data: existingProducts } = await supabase
-      .from("products")
-      .select("id")
-      .order("id", { ascending: false })
-      .limit(1)
+    let newId = 1
 
-    const newId = existingProducts && existingProducts.length > 0 ? existingProducts[0].id + 1 : 1
+    try {
+      const { data: existingProducts } = await supabase
+        .from("products")
+        .select("id")
+        .order("id", { ascending: false })
+        .limit(1)
+
+      if (existingProducts && existingProducts.length > 0) {
+        newId = existingProducts[0].id + 1
+      } else {
+        // Si no hay productos en Supabase, intentamos obtener el último ID del localStorage
+        const localProducts = getProductsFromLocalStorage()
+        if (localProducts.length > 0) {
+          const maxId = Math.max(...localProducts.map((p) => p.id))
+          newId = maxId + 1
+        }
+      }
+    } catch (error) {
+      console.error("Error getting last product ID:", error)
+      // Si hay un error, intentamos obtener el último ID del localStorage
+      const localProducts = getProductsFromLocalStorage()
+      if (localProducts.length > 0) {
+        const maxId = Math.max(...localProducts.map((p) => p.id))
+        newId = maxId + 1
+      }
+    }
 
     const newProduct = {
       ...product,
       id: newId,
     }
 
+    // Intentar insertar en Supabase
     const { data, error } = await supabase.from("products").insert(newProduct).select()
 
-    if (error) throw error
-
-    // Actualizar localStorage
-    if (isBrowser) {
-      const savedStock = localStorage.getItem("sabornuts-stock")
-      let products = []
-      if (savedStock) {
-        try {
-          products = JSON.parse(savedStock)
-        } catch (e) {
-          console.error("Error parsing local stock", e)
-        }
-      }
-      products.push(newProduct)
-      localStorage.setItem("sabornuts-stock", JSON.stringify(products))
+    if (error) {
+      console.error("Error inserting product in Supabase:", error)
+      // Si hay un error con Supabase, actualizamos solo el localStorage
+      updateLocalProducts((prev) => [...prev, newProduct])
+      return newProduct
     }
 
+    // Si la inserción en Supabase fue exitosa, actualizamos el localStorage
+    updateLocalProducts((prev) => [...prev, data?.[0] || newProduct])
     return data?.[0] || newProduct
   } catch (e) {
-    console.error("Error adding product:", e)
-    return null
+    console.error("Exception adding product:", e)
+    // En caso de excepción, actualizamos solo el localStorage
+    const newId = Math.max(...getProductsFromLocalStorage().map((p) => p.id), 0) + 1
+    const newProduct = { ...product, id: newId }
+    updateLocalProducts((prev) => [...prev, newProduct])
+    return newProduct
+  }
+}
+
+// Función auxiliar para actualizar productos en localStorage
+function updateLocalProducts(updater: (prev: Product[]) => Product[]) {
+  if (isBrowser) {
+    try {
+      const currentProducts = getProductsFromLocalStorage()
+      const updatedProducts = updater(currentProducts)
+      localStorage.setItem("sabornuts-stock", JSON.stringify(updatedProducts))
+    } catch (e) {
+      console.error("Error updating local products:", e)
+    }
   }
 }
 
 export async function updateProduct(product: Product): Promise<Product | null> {
   try {
+    // Intentar actualizar en Supabase
     const { data, error } = await supabase.from("products").update(product).eq("id", product.id).select()
 
-    if (error) throw error
-
-    // Actualizar localStorage
-    if (isBrowser) {
-      const savedStock = localStorage.getItem("sabornuts-stock")
-      if (savedStock) {
-        try {
-          const products = JSON.parse(savedStock)
-          const productIndex = products.findIndex((p: Product) => p.id === product.id)
-          if (productIndex !== -1) {
-            products[productIndex] = product
-            localStorage.setItem("sabornuts-stock", JSON.stringify(products))
-          }
-        } catch (e) {
-          console.error("Error updating local product", e)
-        }
-      }
+    if (error) {
+      console.error("Error updating product in Supabase:", error)
+      // Si hay un error con Supabase, actualizamos solo el localStorage
+      updateLocalProducts((prev) => prev.map((p) => (p.id === product.id ? product : p)))
+      return product
     }
 
+    // Si la actualización en Supabase fue exitosa, actualizamos el localStorage
+    updateLocalProducts((prev) => prev.map((p) => (p.id === product.id ? data?.[0] || product : p)))
     return data?.[0] || product
   } catch (e) {
-    console.error("Error updating product:", e)
-    return null
+    console.error("Exception updating product:", e)
+    // En caso de excepción, actualizamos solo el localStorage
+    updateLocalProducts((prev) => prev.map((p) => (p.id === product.id ? product : p)))
+    return product
   }
 }
 
 export async function deleteProduct(productId: number): Promise<void> {
   try {
+    // Intentar eliminar en Supabase
     const { error } = await supabase.from("products").delete().eq("id", productId)
 
-    if (error) throw error
-
-    // Actualizar localStorage
-    if (isBrowser) {
-      const savedStock = localStorage.getItem("sabornuts-stock")
-      if (savedStock) {
-        try {
-          const products = JSON.parse(savedStock)
-          const updatedProducts = products.filter((p: Product) => p.id !== productId)
-          localStorage.setItem("sabornuts-stock", JSON.stringify(updatedProducts))
-        } catch (e) {
-          console.error("Error deleting local product", e)
-        }
-      }
+    if (error) {
+      console.error("Error deleting product from Supabase:", error)
     }
+
+    // Siempre actualizamos el localStorage, incluso si hay un error con Supabase
+    updateLocalProducts((prev) => prev.filter((p) => p.id !== productId))
   } catch (e) {
-    console.error("Error deleting product:", e)
+    console.error("Exception deleting product:", e)
+    // En caso de excepción, actualizamos solo el localStorage
+    updateLocalProducts((prev) => prev.filter((p) => p.id !== productId))
   }
 }
 
@@ -367,7 +406,10 @@ export async function getCategories(): Promise<Category[]> {
   try {
     const { data, error } = await supabase.from("categories").select("*").order("id")
 
-    if (error) throw error
+    if (error) {
+      console.error("Error fetching categories from Supabase:", error)
+      return getCategoriesFromLocalStorage()
+    }
 
     if (data && data.length > 0) {
       // Guardar en localStorage como respaldo
@@ -375,12 +417,16 @@ export async function getCategories(): Promise<Category[]> {
         localStorage.setItem("sabornuts-categories", JSON.stringify(data))
       }
       return data
+    } else {
+      return getCategoriesFromLocalStorage()
     }
   } catch (e) {
-    console.error("Error fetching categories:", e)
+    console.error("Exception fetching categories:", e)
+    return getCategoriesFromLocalStorage()
   }
+}
 
-  // Fallback a localStorage
+function getCategoriesFromLocalStorage(): Category[] {
   if (isBrowser) {
     const savedCategories = localStorage.getItem("sabornuts-categories")
     if (savedCategories) {
@@ -393,104 +439,128 @@ export async function getCategories(): Promise<Category[]> {
   }
 
   // Categorías por defecto
-  return [
+  const defaultCategories = [
     { id: 1, name: "Frutos Secos" },
     { id: 2, name: "Frutas Secas" },
     { id: 3, name: "Semillas" },
     { id: 4, name: "Mezclas" },
   ]
+
+  // Guardar categorías por defecto en localStorage
+  if (isBrowser) {
+    localStorage.setItem("sabornuts-categories", JSON.stringify(defaultCategories))
+  }
+
+  return defaultCategories
+}
+
+function updateLocalCategories(updater: (prev: Category[]) => Category[]) {
+  if (isBrowser) {
+    try {
+      const currentCategories = getCategoriesFromLocalStorage()
+      const updatedCategories = updater(currentCategories)
+      localStorage.setItem("sabornuts-categories", JSON.stringify(updatedCategories))
+    } catch (e) {
+      console.error("Error updating local categories:", e)
+    }
+  }
 }
 
 export async function addCategory(name: string): Promise<Category | null> {
   try {
     // Obtener el último ID para asignar uno nuevo
-    const { data: existingCategories } = await supabase
-      .from("categories")
-      .select("id")
-      .order("id", { ascending: false })
-      .limit(1)
+    let newId = 1
 
-    const newId = existingCategories && existingCategories.length > 0 ? existingCategories[0].id + 1 : 1
+    try {
+      const { data: existingCategories } = await supabase
+        .from("categories")
+        .select("id")
+        .order("id", { ascending: false })
+        .limit(1)
+
+      if (existingCategories && existingCategories.length > 0) {
+        newId = existingCategories[0].id + 1
+      } else {
+        // Si no hay categorías en Supabase, intentamos obtener el último ID del localStorage
+        const localCategories = getCategoriesFromLocalStorage()
+        if (localCategories.length > 0) {
+          const maxId = Math.max(...localCategories.map((c) => c.id))
+          newId = maxId + 1
+        }
+      }
+    } catch (error) {
+      console.error("Error getting last category ID:", error)
+      // Si hay un error, intentamos obtener el último ID del localStorage
+      const localCategories = getCategoriesFromLocalStorage()
+      if (localCategories.length > 0) {
+        const maxId = Math.max(...localCategories.map((c) => c.id))
+        newId = maxId + 1
+      }
+    }
 
     const newCategory = { id: newId, name }
 
+    // Intentar insertar en Supabase
     const { data, error } = await supabase.from("categories").insert(newCategory).select()
 
-    if (error) throw error
-
-    // Actualizar localStorage
-    if (isBrowser) {
-      const savedCategories = localStorage.getItem("sabornuts-categories")
-      let categories = []
-      if (savedCategories) {
-        try {
-          categories = JSON.parse(savedCategories)
-        } catch (e) {
-          console.error("Error parsing local categories", e)
-        }
-      }
-      categories.push(newCategory)
-      localStorage.setItem("sabornuts-categories", JSON.stringify(categories))
+    if (error) {
+      console.error("Error inserting category in Supabase:", error)
+      // Si hay un error con Supabase, actualizamos solo el localStorage
+      updateLocalCategories((prev) => [...prev, newCategory])
+      return newCategory
     }
 
+    // Si la inserción en Supabase fue exitosa, actualizamos el localStorage
+    updateLocalCategories((prev) => [...prev, data?.[0] || newCategory])
     return data?.[0] || newCategory
   } catch (e) {
-    console.error("Error adding category:", e)
-    return null
+    console.error("Exception adding category:", e)
+    // En caso de excepción, actualizamos solo el localStorage
+    const newId = Math.max(...getCategoriesFromLocalStorage().map((c) => c.id), 0) + 1
+    const newCategory = { id: newId, name }
+    updateLocalCategories((prev) => [...prev, newCategory])
+    return newCategory
   }
 }
 
 export async function updateCategory(category: Category): Promise<Category | null> {
   try {
+    // Intentar actualizar en Supabase
     const { data, error } = await supabase.from("categories").update(category).eq("id", category.id).select()
 
-    if (error) throw error
-
-    // Actualizar localStorage
-    if (isBrowser) {
-      const savedCategories = localStorage.getItem("sabornuts-categories")
-      if (savedCategories) {
-        try {
-          const categories = JSON.parse(savedCategories)
-          const categoryIndex = categories.findIndex((c: Category) => c.id === category.id)
-          if (categoryIndex !== -1) {
-            categories[categoryIndex] = category
-            localStorage.setItem("sabornuts-categories", JSON.stringify(categories))
-          }
-        } catch (e) {
-          console.error("Error updating local category", e)
-        }
-      }
+    if (error) {
+      console.error("Error updating category in Supabase:", error)
+      // Si hay un error con Supabase, actualizamos solo el localStorage
+      updateLocalCategories((prev) => prev.map((c) => (c.id === category.id ? category : c)))
+      return category
     }
 
+    // Si la actualización en Supabase fue exitosa, actualizamos el localStorage
+    updateLocalCategories((prev) => prev.map((c) => (c.id === category.id ? data?.[0] || category : c)))
     return data?.[0] || category
   } catch (e) {
-    console.error("Error updating category:", e)
-    return null
+    console.error("Exception updating category:", e)
+    // En caso de excepción, actualizamos solo el localStorage
+    updateLocalCategories((prev) => prev.map((c) => (c.id === category.id ? category : c)))
+    return category
   }
 }
 
 export async function deleteCategory(categoryId: number): Promise<void> {
   try {
+    // Intentar eliminar en Supabase
     const { error } = await supabase.from("categories").delete().eq("id", categoryId)
 
-    if (error) throw error
-
-    // Actualizar localStorage
-    if (isBrowser) {
-      const savedCategories = localStorage.getItem("sabornuts-categories")
-      if (savedCategories) {
-        try {
-          const categories = JSON.parse(savedCategories)
-          const updatedCategories = categories.filter((c: Category) => c.id !== categoryId)
-          localStorage.setItem("sabornuts-categories", JSON.stringify(updatedCategories))
-        } catch (e) {
-          console.error("Error deleting local category", e)
-        }
-      }
+    if (error) {
+      console.error("Error deleting category from Supabase:", error)
     }
+
+    // Siempre actualizamos el localStorage, incluso si hay un error con Supabase
+    updateLocalCategories((prev) => prev.filter((c) => c.id !== categoryId))
   } catch (e) {
-    console.error("Error deleting category:", e)
+    console.error("Exception deleting category:", e)
+    // En caso de excepción, actualizamos solo el localStorage
+    updateLocalCategories((prev) => prev.filter((c) => c.id !== categoryId))
   }
 }
 

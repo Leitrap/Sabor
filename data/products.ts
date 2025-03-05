@@ -72,10 +72,23 @@ export const products: Product[] = [
 export function loadSavedStock() {
   if (typeof window === "undefined") return
 
-  const savedStock = localStorage.getItem("sabornuts-stock")
-  if (!savedStock) {
-    // Si no hay stock guardado, guardar los productos predefinidos
-    localStorage.setItem("sabornuts-stock", JSON.stringify(products))
+  try {
+    const savedStock = localStorage.getItem("sabornuts-stock")
+    if (!savedStock) {
+      // Si no hay stock guardado, guardar los productos predefinidos
+      localStorage.setItem("sabornuts-stock", JSON.stringify(products))
+      console.log("Initialized default products in localStorage")
+    } else {
+      console.log("Found existing products in localStorage")
+    }
+  } catch (error) {
+    console.error("Error loading saved stock:", error)
+    // En caso de error, intentar guardar los productos predefinidos
+    try {
+      localStorage.setItem("sabornuts-stock", JSON.stringify(products))
+    } catch (e) {
+      console.error("Error saving default products to localStorage:", e)
+    }
   }
 }
 
