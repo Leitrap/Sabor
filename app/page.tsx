@@ -4,41 +4,29 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
-import { ThemeToggle } from "@/components/theme-toggle"
-import { useToast } from "@/components/ui/use-toast"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useVendor } from "@/components/vendor-provider"
-import { ShieldCheck, BarChart3, Settings, ShoppingBag } from "lucide-react"
+import { v4 as uuidv4 } from "uuid"
 
 export default function LoginPage() {
   const [vendorName, setVendorName] = useState("")
+  const [storeLocation, setStoreLocation] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const { toast } = useToast()
+  const [mounted, setMounted] = useState(false)
   const router = useRouter()
-  const { setVendorInfo } = useVendor()
+  const { vendorInfo, setVendorInfo } = useVendor()
 
   // Verificar si ya hay un vendedor logueado
   useEffect(() => {
-    const savedVendor = localStorage.getItem("sabornuts-vendor")
-    if (savedVendor) {
-      try {
-        const vendorData = JSON.parse(savedVendor)
-        if (vendorData.name) {
-          router.push("/productos")
-        }
-      } catch (e) {
-        console.error("Error al cargar datos del vendedor", e)
-      }
+    setMounted(true)
+    if (vendorInfo) {
+      router.push("/productos")
     }
-  }, [router])
+  }, [vendorInfo, router])
 
   const handleLogin = () => {
     if (!vendorName.trim()) {
-      toast({
-        title: "Error",
-        description: "Por favor ingresa tu nombre para continuar",
-        variant: "destructive",
-      })
       return
     }
 
@@ -46,91 +34,62 @@ export default function LoginPage() {
 
     // Simular un pequeño retraso para mostrar el estado de carga
     setTimeout(() => {
-      // Guardar información del vendedor
-      const vendorInfo = {
+      // Crear información del vendedor
+      const newVendorInfo = {
+        id: uuidv4(),
         name: vendorName.trim(),
-        loginTime: new Date().toISOString(),
+        storeLocation: storeLocation.trim() || undefined,
       }
 
-      localStorage.setItem("sabornuts-vendor", JSON.stringify(vendorInfo))
-      setVendorInfo(vendorInfo)
+      // Guardar información del vendedor
+      setVendorInfo(newVendorInfo)
 
-      toast({
-        title: "¡Bienvenido!",
-        description: `Has iniciado sesión como ${vendorName}`,
-      })
-
+      // Redirigir a la página de productos
       router.push("/productos")
-    }, 800)
+    }, 1000)
+  }
+
+  // No renderizar nada hasta que el componente esté montado
+  // Esto evita errores de hidratación
+  if (!mounted) {
+    return null
   }
 
   return (
-    <main className="min-h-screen flex flex-col">
-      <header className="bg-background border-b">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-2xl md:text-3xl sabornuts-logo text-primary">Sabornuts</h1>
-          <ThemeToggle />
-        </div>
-      </header>
-
-      <div className="flex-1 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl text-center">Bienvenido a Sabornuts</CardTitle>
-            <CardDescription className="text-center">Ingresa tu nombre para comenzar a tomar pedidos</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+    <main className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-b from-background to-muted">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <CardTitle className="text-3xl sabornuts-logo text-primary">Sabornuts</CardTitle>
+          <CardDescription>Ingresa tus datos para comenzar a tomar pedidos</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
             <div className="space-y-2">
-              <label htmlFor="vendor-name" className="block text-sm font-medium">
-                Nombre del Vendedor
-              </label>
+              <Label htmlFor="vendor-name">Nombre del Vendedor</Label>
               <Input
                 id="vendor-name"
                 placeholder="Ingresa tu nombre"
                 value={vendorName}
                 onChange={(e) => setVendorName(e.target.value)}
-                autoComplete="name"
-                autoFocus
               />
             </div>
-          </CardContent>
-          <CardFooter>
-            <Button className="w-full" onClick={handleLogin} disabled={isLoading}>
-              {isLoading ? "Iniciando..." : "Comenzar a Vender"}
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
-
-      <footer className="border-t py-6">
-        <div className="container mx-auto px-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-            <div className="flex flex-col items-center">
-              <ShieldCheck className="h-6 w-6 mb-2 text-primary" />
-              <h3 className="text-sm font-medium">Seguro</h3>
-              <p className="text-xs text-muted-foreground">Datos protegidos</p>
-            </div>
-            <div className="flex flex-col items-center">
-              <ShoppingBag className="h-6 w-6 mb-2 text-primary" />
-              <h3 className="text-sm font-medium">Control de Stock</h3>
-              <p className="text-xs text-muted-foreground">Gestión de inventario</p>
-            </div>
-            <div className="flex flex-col items-center">
-              <BarChart3 className="h-6 w-6 mb-2 text-primary" />
-              <h3 className="text-sm font-medium">Estadísticas</h3>
-              <p className="text-xs text-muted-foreground">Análisis de ventas</p>
-            </div>
-            <div className="flex flex-col items-center">
-              <Settings className="h-6 w-6 mb-2 text-primary" />
-              <h3 className="text-sm font-medium">Personalizable</h3>
-              <p className="text-xs text-muted-foreground">Adaptable a tu negocio</p>
+            <div className="space-y-2">
+              <Label htmlFor="store-location">Ubicación (opcional)</Label>
+              <Input
+                id="store-location"
+                placeholder="Sucursal o ubicación"
+                value={storeLocation}
+                onChange={(e) => setStoreLocation(e.target.value)}
+              />
             </div>
           </div>
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            © {new Date().getFullYear()} Sabornuts. Todos los derechos reservados.
-          </div>
-        </div>
-      </footer>
+        </CardContent>
+        <CardFooter>
+          <Button className="w-full" onClick={handleLogin} disabled={!vendorName.trim() || isLoading}>
+            {isLoading ? "Iniciando..." : "Iniciar Sesión"}
+          </Button>
+        </CardFooter>
+      </Card>
     </main>
   )
 }
