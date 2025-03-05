@@ -66,8 +66,9 @@ export default function AjusteStockPage() {
   }, [searchTerm, products])
 
   const handleStockChange = (productId: number, newStock: string) => {
+    // Permitir valores negativos
     const stock = Number.parseInt(newStock)
-    if (!isNaN(stock) && stock >= 0) {
+    if (!isNaN(stock)) {
       setStockChanges((prev) => ({
         ...prev,
         [productId]: stock,
@@ -223,7 +224,6 @@ export default function AjusteStockPage() {
                         <Input
                           id={`stock-${product.id}`}
                           type="number"
-                          min="0"
                           value={currentStock}
                           onChange={(e) => handleStockChange(product.id, e.target.value)}
                           className={hasChanged ? "border-primary" : ""}

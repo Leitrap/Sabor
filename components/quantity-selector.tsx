@@ -26,6 +26,10 @@ export function QuantitySelector({ product, isOpen, onClose }: QuantitySelectorP
     }
   }
 
+  const handleQuickSelect = (value: number) => {
+    setQuantity(value)
+  }
+
   const handleIncrement = () => {
     setQuantity((prev) => prev + 1)
   }
@@ -56,6 +60,22 @@ export function QuantitySelector({ product, isOpen, onClose }: QuantitySelectorP
             <p className="text-xs text-muted-foreground">Stock disponible: {product.stock}</p>
           </div>
         </div>
+
+        {/* Botones de acceso rápido */}
+        <div className="grid grid-cols-4 gap-2 py-2">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((num) => (
+            <Button
+              key={num}
+              variant={quantity === num ? "default" : "outline"}
+              size="sm"
+              onClick={() => handleQuickSelect(num)}
+              className="h-10"
+            >
+              {num}
+            </Button>
+          ))}
+        </div>
+
         <div className="flex items-center gap-2 py-2">
           <Button variant="outline" size="icon" onClick={handleDecrement} disabled={quantity <= 1}>
             <Minus className="h-4 w-4" />
@@ -63,12 +83,11 @@ export function QuantitySelector({ product, isOpen, onClose }: QuantitySelectorP
           <Input
             type="number"
             min="1"
-            max={product.stock}
             value={quantity}
             onChange={(e) => handleQuantityChange(e.target.value)}
             className="w-20 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
-          <Button variant="outline" size="icon" onClick={handleIncrement} disabled={quantity >= product.stock}>
+          <Button variant="outline" size="icon" onClick={handleIncrement}>
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -80,9 +99,7 @@ export function QuantitySelector({ product, isOpen, onClose }: QuantitySelectorP
           <Button variant="outline" onClick={onClose}>
             Cancelar
           </Button>
-          <Button onClick={handleAddToCart} disabled={quantity > product.stock}>
-            Agregar al carrito
-          </Button>
+          <Button onClick={handleAddToCart}>Agregar al carrito</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

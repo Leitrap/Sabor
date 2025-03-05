@@ -18,6 +18,7 @@ export function ProductCarousel({ isOpen, onClose }: ProductCarouselProps) {
   const [products, setProducts] = useState<Product[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
+  const [quantity, setQuantity] = useState(1)
   const { addToCart } = useCart()
 
   useEffect(() => {
@@ -35,21 +36,29 @@ export function ProductCarousel({ isOpen, onClose }: ProductCarouselProps) {
 
     if (isOpen) {
       loadProducts()
+      setQuantity(1) // Reset quantity when opening
     }
   }, [isOpen])
 
   const handlePrevious = () => {
     setCurrentIndex((prev) => (prev > 0 ? prev - 1 : products.length - 1))
+    setQuantity(1) // Reset quantity when changing product
   }
 
   const handleNext = () => {
     setCurrentIndex((prev) => (prev < products.length - 1 ? prev + 1 : 0))
+    setQuantity(1) // Reset quantity when changing product
   }
 
   const handleAddToCart = () => {
     if (products.length > 0) {
-      addToCart(products[currentIndex], 1)
+      addToCart(products[currentIndex], quantity)
+      onClose()
     }
+  }
+
+  const handleQuickSelect = (value: number) => {
+    setQuantity(value)
   }
 
   return (
@@ -72,52 +81,48 @@ export function ProductCarousel({ isOpen, onClose }: ProductCarouselProps) {
           </div>
         ) : (
           <div className="relative">
-            <div className="aspect-square overflow-hidden bg-muted rounded-md">
-              <img
-                src={products[currentIndex]?.image || "/placeholder.svg"}
-                alt={products[currentIndex]?.name}
-                className="w-full h-full object-cover"
-              />
+            <div className="text-center mb-4">
+              <h3 className="text-xl font-medium">{products[currentIndex]?.name}</h3>
+              <p className="text-lg text-muted-foreground">{formatCurrency(products[currentIndex]?.price)}</p>
+              <p className="text-sm text-muted-foreground">Stock: {products[currentIndex]?.stock}</p>
             </div>
 
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handlePrevious}
-              className="absolute left-2 top-1/2 transform -translate-y-1/2 rounded-full bg-background/80 backdrop-blur-sm"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={handleNext}
-              className="absolute right-2 top-1/2 transform -translate-y-1/2 rounded-full bg-background/80 backdrop-blur-sm"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-
-            <div className="mt-4 text-center">
-              <h3 className="font-medium">{products[currentIndex]?.name}</h3>
-              <p className="text-muted-foreground">{formatCurrency(products[currentIndex]?.price)}</p>
-              <p className="text-sm text-muted-foreground">Stock: {products[currentIndex]?.stock}</p>
-
-              <Button onClick={handleAddToCart} className="mt-4" disabled={products[currentIndex]?.stock <= 0}>
-                Agregar al carrito
+            <div className="flex justify-between items-center mb-4">
+              <Button variant="outline" onClick={handlePrevious}>
+                <ChevronLeft className="h-4 w-4 mr-2" />
+                Anterior
+              </Button>
+              <Button variant="outline" onClick={handleNext}>
+                Siguiente
+                <ChevronRight className="h-4 w-4 ml-2" />
               </Button>
             </div>
 
-            <div className="flex justify-center mt-4">
-              <div className="flex gap-1">
-                {products.map((_, index) => (
-                  <button
-                    key={index}
-                    className={`w-2 h-2 rounded-full ${index === currentIndex ? "bg-primary" : "bg-muted"}`}
-                    onClick={() => setCurrentIndex(index)}
-                  />
-                ))}
-              </div>
+            {/* Botones de acceso rápido */}
+            <div className="grid grid-cols-4 gap-2 py-2">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((num) => (
+                <Button
+                  key={num}
+                  variant={quantity === num ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleQuickSelect(num)}
+                  className="h-10"
+                >
+                  {num}
+                </Button>
+              ))}
+            </div>
+
+            <div className="flex justify-between items-center mt-4">
+              <p className="font-medium">Cantidad: {quantity}</p>
+              <p className="font-bold">{formatCurrency(products[currentIndex]?.price * quantity)}</p>
+            </div>
+
+            <div className="flex justify-between mt-6">
+              <Button variant="outline" onClick={onClose}>
+                Cancelar
+              </Button>
+              <Button onClick={handleAddToCart}>Agregar al carrito</Button>
             </div>
           </div>
         )}
