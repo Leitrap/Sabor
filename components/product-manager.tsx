@@ -1,6 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import type React from "react"
+
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -18,8 +20,9 @@ import {
   deleteCategory,
   type Product,
   type Category,
+  supabase,
 } from "@/lib/supabase"
-import { Plus, Pencil, Trash2, Tag, Search } from "lucide-react"
+import { Plus, Pencil, Trash2, Tag, Search, Upload } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { formatCurrency } from "@/lib/utils"
@@ -33,8 +36,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Progress } from "@/components/ui/progress"
 
-export function ProductManager({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+export function ProductManager({
+  isOpen,
+  onClose,
+  onProductsUpdated,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  onProductsUpdated: () => void
+}) {
   const [activeTab, setActiveTab] = useState("products")
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -69,6 +81,11 @@ export function ProductManager({ isOpen, onClose }: { isOpen: boolean; onClose: 
   }>({
     name: "",
   })
+
+  // Estado para la carga de imágenes
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
@@ -115,6 +132,82 @@ export function ProductManager({ isOpen, onClose }: { isOpen: boolean; onClose: 
     }
   }
 
+  // Función para cargar imágenes a Supabase Storage
+  const uploadImage = async (file: File): Promise<string> => {
+    setIsUploading(true)
+    setUploadProgress(0)
+
+    try {
+      // Crear un nombre único para el archivo
+      const fileExt = file.name.split(".").pop()
+      const fileName = `${Date.now()}.${fileExt}`
+      const filePath = `product-images/${fileName}`
+
+      // Subir el archivo a Supabase Storage
+      const { data, error } = await supabase.storage.from("sabornuts").upload(filePath, file, {
+        cacheControl: "3600",
+        upsert: false,
+        onUploadProgress: (progress) => {
+          const percent = Math.round((progress.loaded / progress.total) * 100)
+          setUploadProgress(percent)
+        },
+      })
+
+      if (error) throw error
+
+      // Obtener la URL pública del archivo
+      const { data: urlData } = supabase.storage.from("sabornuts").getPublicUrl(filePath)
+
+      return urlData.publicUrl
+    } catch (error) {
+      console.error("Error uploading image:", error)
+      toast({
+        title: "Error",
+        description: "No se pudo cargar la imagen. Intente nuevamente.",
+        variant: "destructive",
+      })
+      return "/placeholder.svg?height=200&width=200"
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Verificar que sea una imagen
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Error",
+        description: "El archivo seleccionado no es una imagen.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Verificar tamaño (máximo 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "Error",
+        description: "La imagen es demasiado grande. El tamaño máximo es 5MB.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Subir la imagen
+    const imageUrl = await uploadImage(file)
+
+    // Actualizar el formulario con la URL de la imagen
+    setProductForm((prev) => ({ ...prev, image: imageUrl }))
+
+    toast({
+      title: "Imagen cargada",
+      description: "La imagen se ha cargado correctamente.",
+    })
+  }
+
   // Funciones para gestionar productos
   const handleAddProduct = async () => {
     if (!productForm.name.trim()) {
@@ -155,6 +248,9 @@ export function ProductManager({ isOpen, onClose }: { isOpen: boolean; onClose: 
           title: "Producto agregado",
           description: `${newProduct.name} ha sido agregado correctamente`,
         })
+
+        // Notificar al componente padre que los productos han sido actualizados
+        onProductsUpdated()
       }
     } catch (error) {
       console.error("Error adding product:", error)
@@ -210,6 +306,9 @@ export function ProductManager({ isOpen, onClose }: { isOpen: boolean; onClose: 
           title: "Producto actualizado",
           description: `${updatedProduct.name} ha sido actualizado correctamente`,
         })
+
+        // Notificar al componente padre que los productos han sido actualizados
+        onProductsUpdated()
       }
     } catch (error) {
       console.error("Error updating product:", error)
@@ -239,6 +338,9 @@ export function ProductManager({ isOpen, onClose }: { isOpen: boolean; onClose: 
         title: "Producto eliminado",
         description: "El producto ha sido eliminado correctamente",
       })
+
+      // Notificar al componente padre que los productos han sido actualizados
+      onProductsUpdated()
     } catch (error) {
       console.error("Error deleting product:", error)
       toast({
@@ -275,6 +377,9 @@ export function ProductManager({ isOpen, onClose }: { isOpen: boolean; onClose: 
           title: "Categoría agregada",
           description: `${newCategory.name} ha sido agregada correctamente`,
         })
+
+        // Notificar al componente padre que las categorías han sido actualizadas
+        onProductsUpdated()
       }
     } catch (error) {
       console.error("Error adding category:", error)
@@ -316,6 +421,9 @@ export function ProductManager({ isOpen, onClose }: { isOpen: boolean; onClose: 
           title: "Categoría actualizada",
           description: `${updatedCategory.name} ha sido actualizada correctamente`,
         })
+
+        // Notificar al componente padre que las categorías han sido actualizadas
+        onProductsUpdated()
       }
     } catch (error) {
       console.error("Error updating category:", error)
@@ -344,6 +452,9 @@ export function ProductManager({ isOpen, onClose }: { isOpen: boolean; onClose: 
         title: "Categoría eliminada",
         description: "La categoría ha sido eliminada correctamente",
       })
+
+      // Notificar al componente padre que las categorías han sido actualizadas
+      onProductsUpdated()
     } catch (error) {
       console.error("Error deleting category:", error)
       toast({
@@ -364,6 +475,11 @@ export function ProductManager({ isOpen, onClose }: { isOpen: boolean; onClose: 
       image: "/placeholder.svg?height=200&width=200",
       stock: 0,
     })
+
+    // Resetear el input de archivo
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
   }
 
   const resetCategoryForm = () => {
@@ -585,13 +701,38 @@ export function ProductManager({ isOpen, onClose }: { isOpen: boolean; onClose: 
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="product-image">URL de la imagen</Label>
-              <Input
-                id="product-image"
-                placeholder="URL de la imagen"
-                value={productForm.image}
-                onChange={(e) => setProductForm((prev) => ({ ...prev, image: e.target.value }))}
-              />
+              <Label htmlFor="product-image">Imagen del producto</Label>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-16 h-16 rounded-md overflow-hidden bg-muted">
+                    <img
+                      src={productForm.image || "/placeholder.svg"}
+                      alt="Vista previa"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading}
+                      className="w-full"
+                    >
+                      <Upload className="mr-2 h-4 w-4" />
+                      {isUploading ? "Subiendo..." : "Subir imagen"}
+                    </Button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </div>
+                </div>
+                {isUploading && <Progress value={uploadProgress} className="h-2 w-full" />}
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="product-stock">Stock</Label>
@@ -626,10 +767,10 @@ export function ProductManager({ isOpen, onClose }: { isOpen: boolean; onClose: 
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsAddProductOpen(false)} disabled={isLoading}>
+            <Button variant="outline" onClick={() => setIsAddProductOpen(false)} disabled={isLoading || isUploading}>
               Cancelar
             </Button>
-            <Button onClick={handleAddProduct} disabled={isLoading}>
+            <Button onClick={handleAddProduct} disabled={isLoading || isUploading}>
               {isLoading ? "Guardando..." : "Guardar"}
             </Button>
           </DialogFooter>
@@ -663,13 +804,38 @@ export function ProductManager({ isOpen, onClose }: { isOpen: boolean; onClose: 
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-product-image">URL de la imagen</Label>
-              <Input
-                id="edit-product-image"
-                placeholder="URL de la imagen"
-                value={productForm.image}
-                onChange={(e) => setProductForm((prev) => ({ ...prev, image: e.target.value }))}
-              />
+              <Label htmlFor="edit-product-image">Imagen del producto</Label>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-16 h-16 rounded-md overflow-hidden bg-muted">
+                    <img
+                      src={productForm.image || "/placeholder.svg"}
+                      alt="Vista previa"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isUploading}
+                      className="w-full"
+                    >
+                      <Upload className="mr-2 h-4 w-4" />
+                      {isUploading ? "Subiendo..." : "Subir imagen"}
+                    </Button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </div>
+                </div>
+                {isUploading && <Progress value={uploadProgress} className="h-2 w-full" />}
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-product-stock">Stock</Label>
@@ -704,10 +870,10 @@ export function ProductManager({ isOpen, onClose }: { isOpen: boolean; onClose: 
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditProductOpen(false)} disabled={isLoading}>
+            <Button variant="outline" onClick={() => setIsEditProductOpen(false)} disabled={isLoading || isUploading}>
               Cancelar
             </Button>
-            <Button onClick={handleUpdateProduct} disabled={isLoading}>
+            <Button onClick={handleUpdateProduct} disabled={isLoading || isUploading}>
               {isLoading ? "Actualizando..." : "Actualizar"}
             </Button>
           </DialogFooter>

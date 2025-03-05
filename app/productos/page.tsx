@@ -1,10 +1,8 @@
 "use client"
 
 import { Label } from "@/components/ui/label"
-
 import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   ShoppingCart,
   Layers,
@@ -53,15 +51,15 @@ import {
 import { CustomerSelector } from "@/components/customer-selector"
 import { ProductManager } from "@/components/product-manager"
 import { useTheme } from "next-themes"
+import { getProducts, getCategories, supabase } from "@/lib/supabase"
 
 // Categorías de productos
-const categories = [
-  { id: "all", name: "Todos" },
-  { id: "nuts", name: "Frutos Secos", products: [1, 2, 3, 4, 5, 6] },
-  { id: "dried", name: "Frutas Secas", products: [8, 9, 10, 11, 12] },
-  { id: "seeds", name: "Semillas", products: [14, 15, 16, 17] },
-  { id: "mixes", name: "Mezclas", products: [7, 13, 18] },
-]
+const categoryMap = {
+  nuts: "Frutos Secos",
+  dried: "Frutas Secas",
+  seeds: "Semillas",
+  mixes: "Mezclas",
+}
 
 export default function ProductsPage() {
   const { setCustomerName, customerName, setCustomerAddress, customerAddress, setIsCartOpen, isCartOpen, items } =
@@ -71,21 +69,181 @@ export default function ProductsPage() {
   const [isCarouselOpen, setIsCarouselOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [activeCategory, setActiveCategory] = useState("all")
-  const [filteredProducts, setFilteredProducts] = useState(products)
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([])
+  const [allProducts, setAllProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<{ id: string; name: string; products: number[] }[]>([
+    { id: "all", name: "Todos", products: [] },
+  ])
   const [isDiscountDialogOpen, setIsDiscountDialogOpen] = useState(false)
   const [discountPercent, setDiscountPercent] = useState(0)
   const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false)
   const [isAddressDialogOpen, setIsAddressDialogOpen] = useState(false)
   const [isProductManagerOpen, setIsProductManagerOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
   const { vendorInfo, clearVendorInfo } = useVendor()
   const { toast } = useToast()
   const { theme, setTheme } = useTheme()
 
-  // Cargar el stock guardado
+  // Cargar productos y categorías
+  const loadProductsAndCategories = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      // Cargar productos desde Supabase
+      const loadedProducts = await getProducts()
+      setAllProducts(loadedProducts)
+
+      // Cargar categorías desde Supabase
+      const loadedCategories = await getCategories()
+
+      // Crear categorías para la UI
+      const uiCategories = [{ id: "all", name: "Todos", products: [] }]
+
+      // Agrupar productos por categoría
+      const productsByCategory: Record<string, number[]> = {}
+
+      loadedCategories.forEach((category) => {
+        productsByCategory[category.id] = []
+      })
+
+      loadedProducts.forEach((product) => {
+        if (product.category_id) {
+          if (!productsByCategory[product.category_id]) {
+            productsByCategory[product.category_id] = []
+          }
+          productsByCategory[product.category_id].push(product.id)
+        }
+      })
+
+      // Crear las categorías para la UI
+      loadedCategories.forEach((category) => {
+        uiCategories.push({
+          id: category.id.toString(),
+          name: category.name,
+          products: productsByCategory[category.id] || [],
+        })
+      })
+
+      setCategories(uiCategories)
+
+      // Filtrar productos según la categoría activa
+      filterProducts(loadedProducts, activeCategory, searchTerm, uiCategories)
+    } catch (error) {
+      console.error("Error loading products and categories:", error)
+      toast({
+        title: "Error",
+        description: "No se pudieron cargar los productos. Usando datos locales.",
+        variant: "destructive",
+      })
+
+      // Usar datos locales como respaldo
+      setAllProducts(products)
+      filterProducts(products, activeCategory, searchTerm, categories)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [toast, activeCategory, categories, searchTerm])
+
+  // Filtrar productos según búsqueda y categoría
+  const filterProducts = useCallback(
+    (
+      productsToFilter: Product[],
+      category: string,
+      search: string,
+      cats: { id: string; name: string; products: number[] }[],
+    ) => {
+      let result = [...productsToFilter]
+
+      // Filtrar por categoría
+      if (category !== "all") {
+        const categoryProducts = cats.find((c) => c.id === category)?.products || []
+        if (categoryProducts.length > 0) {
+          result = result.filter((product) => categoryProducts.includes(product.id))
+        }
+      }
+
+      // Filtrar por término de búsqueda
+      if (search) {
+        const term = search.toLowerCase()
+        result = result.filter((product) => product.name.toLowerCase().includes(term))
+      }
+
+      setFilteredProducts(result)
+    },
+    [],
+  )
+
+  // Cargar el stock guardado y configurar suscripción a cambios
   useEffect(() => {
     loadSavedStock()
-  }, [])
+    loadProductsAndCategories()
+
+    // Configurar suscripción a cambios en productos
+    const productsSubscription = supabase
+      .channel("products-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "products",
+        },
+        () => {
+          // Recargar productos cuando haya cambios
+          loadProductsAndCategories()
+        },
+      )
+      .subscribe()
+
+    // Configurar suscripción a cambios en categorías
+    const categoriesSubscription = supabase
+      .channel("categories-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "categories",
+        },
+        () => {
+          // Recargar categorías cuando haya cambios
+          loadProductsAndCategories()
+        },
+      )
+      .subscribe()
+
+    // Configurar suscripción a cambios en pedidos
+    const ordersSubscription = supabase
+      .channel("orders-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+        },
+        () => {
+          // Notificar al usuario sobre nuevos pedidos
+          toast({
+            title: "Actualización de pedidos",
+            description: "Se han actualizado los pedidos en curso.",
+          })
+        },
+      )
+      .subscribe()
+
+    return () => {
+      // Limpiar suscripciones al desmontar
+      supabase.removeChannel(productsSubscription)
+      supabase.removeChannel(categoriesSubscription)
+      supabase.removeChannel(ordersSubscription)
+    }
+  }, [toast, loadProductsAndCategories])
+
+  // Filtrar productos cuando cambie la categoría o el término de búsqueda
+  useEffect(() => {
+    filterProducts(allProducts, activeCategory, searchTerm, categories)
+  }, [searchTerm, activeCategory, allProducts, categories, filterProducts])
 
   // Verificar si hay un vendedor logueado
   useEffect(() => {
@@ -93,27 +251,6 @@ export default function ProductsPage() {
       router.push("/")
     }
   }, [vendorInfo, router])
-
-  // Filtrar productos según búsqueda y categoría
-  useEffect(() => {
-    let result = [...products]
-
-    // Filtrar por categoría
-    if (activeCategory !== "all") {
-      const categoryProducts = categories.find((c) => c.id === activeCategory)?.products || []
-      if (categoryProducts.length > 0) {
-        result = result.filter((product) => categoryProducts.includes(product.id))
-      }
-    }
-
-    // Filtrar por término de búsqueda
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
-      result = result.filter((product) => product.name.toLowerCase().includes(term))
-    }
-
-    setFilteredProducts(result)
-  }, [searchTerm, activeCategory])
 
   const handleAddToCart = (product: Product) => {
     setSelectedProduct(product)
@@ -163,6 +300,11 @@ export default function ProductsPage() {
 
   const toggleTheme = () => {
     setTheme(theme === "dark" ? "light" : "dark")
+  }
+
+  const handleProductsUpdated = () => {
+    // Recargar productos y categorías cuando se actualicen desde el gestor
+    loadProductsAndCategories()
   }
 
   if (!vendorInfo) {
@@ -291,8 +433,12 @@ export default function ProductsPage() {
             ))}
           </TabsList>
 
-          {categories.map((category) => (
-            <TabsContent key={category.id} value={category.id} className="mt-0">
+          {isLoading ? (
+            <div className="text-center py-12">
+              <p className="text-muted-foreground">Cargando productos...</p>
+            </div>
+          ) : (
+            <TabsContent value={activeCategory} className="mt-0">
               {filteredProducts.length === 0 ? (
                 <div className="text-center py-12">
                   <p className="text-muted-foreground">No se encontraron productos</p>
@@ -311,9 +457,9 @@ export default function ProductsPage() {
                       <CardContent className="p-3">
                         <div className="flex justify-between items-start mb-1">
                           <h3 className="font-medium line-clamp-1 text-sm">{product.name}</h3>
-                          {category.id !== "all" && (
+                          {activeCategory === "all" && product.category_id && (
                             <Badge variant="outline" className="text-xs">
-                              {categories.find((c) => c.products?.includes(product.id))?.name || ""}
+                              {categories.find((c) => c.id === product.category_id?.toString())?.name || ""}
                             </Badge>
                           )}
                         </div>
@@ -332,7 +478,7 @@ export default function ProductsPage() {
                 </div>
               )}
             </TabsContent>
-          ))}
+          )}
         </Tabs>
       </div>
 
@@ -352,7 +498,11 @@ export default function ProductsPage() {
       <ProductCarousel isOpen={isCarouselOpen} onClose={() => setIsCarouselOpen(false)} />
 
       {/* Gestor de productos */}
-      <ProductManager isOpen={isProductManagerOpen} onClose={() => setIsProductManagerOpen(false)} />
+      <ProductManager
+        isOpen={isProductManagerOpen}
+        onClose={() => setIsProductManagerOpen(false)}
+        onProductsUpdated={handleProductsUpdated}
+      />
 
       {/* Diálogo de descuento */}
       <Dialog open={isDiscountDialogOpen} onOpenChange={setIsDiscountDialogOpen}>

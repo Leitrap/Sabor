@@ -5,6 +5,13 @@ import { createClient } from "@supabase/supabase-js"
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+  {
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
+    },
+  },
 )
 
 // Tipos para nuestras tablas en Supabase
@@ -769,5 +776,34 @@ function deleteOrderFromLocalStorage(orderId: string): void {
       console.error("Error deleting order from pending orders", e)
     }
   }
+}
+
+// Crear un bucket para almacenar imágenes si no existe
+export async function createStorageBucketIfNotExists(): Promise<void> {
+  try {
+    // Verificar si el bucket existe
+    const { data: buckets } = await supabase.storage.listBuckets()
+
+    if (!buckets?.find((bucket) => bucket.name === "sabornuts")) {
+      // Crear el bucket si no existe
+      const { error } = await supabase.storage.createBucket("sabornuts", {
+        public: true,
+        fileSizeLimit: 5242880, // 5MB
+      })
+
+      if (error) {
+        console.error("Error creating storage bucket:", error)
+      } else {
+        console.log("Storage bucket created successfully")
+      }
+    }
+  } catch (error) {
+    console.error("Error checking/creating storage bucket:", error)
+  }
+}
+
+// Llamar a esta función al iniciar la aplicación
+if (typeof window !== "undefined") {
+  createStorageBucketIfNotExists()
 }
 
