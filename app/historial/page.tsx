@@ -8,6 +8,11 @@ import { formatCurrency } from "@/lib/utils"
 import { ArrowLeft, FileText, Trash2, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { useVendor } from "@/components/vendor-provider"
+import dynamic from "next/dynamic"
+
+// Importar dinámicamente jsPDF y autoTable
+const jsPDF = dynamic(() => import("jspdf").then((mod) => mod.default), { ssr: false })
+const autoTable = dynamic(() => import("jspdf-autotable").then((mod) => mod.default), { ssr: false })
 
 type OrderHistoryItem = {
   id: string
@@ -134,13 +139,15 @@ export default function HistorialPage() {
   }
 
   const regeneratePDF = (order: OrderHistoryItem) => {
+    if (typeof window === "undefined") return
+
     // Importar jsPDF y autoTable dinámicamente
     import("jspdf").then((jsPDFModule) => {
       import("jspdf-autotable").then((autoTableModule) => {
-        const jsPDF = jsPDFModule.default
+        const JsPDF = jsPDFModule.default
         const autoTable = autoTableModule.default
 
-        const doc = new jsPDF()
+        const doc = new JsPDF()
 
         // Add logo and header
         doc.setFontSize(22)

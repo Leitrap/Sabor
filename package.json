@@ -58,7 +58,10 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.6",
     "zod": "^3.24.1",
-    "@supabase/supabase-js": "latest"
+    "jspdf": "latest",
+    "@supabase/supabase-js": "latest",
+    "uuid": "latest",
+    "jspdf-autotable": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

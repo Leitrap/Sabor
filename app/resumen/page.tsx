@@ -5,14 +5,17 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useCart } from "@/components/cart-provider"
 import { formatCurrency } from "@/lib/utils"
-import jsPDF from "jspdf"
-import autoTable from "jspdf-autotable"
 import { v4 as uuidv4 } from "uuid"
 import { useVendor } from "@/components/vendor-provider"
 import { ArrowLeft, Plus, Minus, Trash2 } from "lucide-react"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { addOrder } from "@/lib/supabase"
+import dynamic from "next/dynamic"
+
+// Dynamically import jsPDF and jsPDF-AutoTable with no SSR
+const jsPDF = dynamic(() => import("jspdf").then((mod) => mod.default), { ssr: false })
+const autoTable = dynamic(() => import("jspdf-autotable").then((mod) => mod.default), { ssr: false })
 
 export default function ResumenPage() {
   const {
@@ -170,127 +173,137 @@ export default function ResumenPage() {
 
   // Modificar la función generatePDF para usar el color verde en Sabornuts
   const generatePDF = () => {
-    const doc = new jsPDF()
+    if (typeof window === "undefined") return
 
-    // Add logo and header
-    doc.setFontSize(22)
-    doc.setTextColor(0, 192, 173) // Color verde #00c0ad
-    doc.setFont("Helvetica", "bold") // Usar Helvetica como aproximación a Recoleta
-    doc.text("Sabornuts", 105, 20, { align: "center" })
+    // Importar jsPDF y autoTable dinámicamente
+    import("jspdf").then((jsPDFModule) => {
+      import("jspdf-autotable").then((autoTableModule) => {
+        const JsPDF = jsPDFModule.default
+        const autoTable = autoTableModule.default
 
-    // Add vendor name and date
-    doc.setFontSize(10)
-    doc.setTextColor(100, 100, 100)
-    doc.setFont("Helvetica", "normal")
-    doc.text(`Vendedor: ${vendorInfo?.name || ""}`, 14, 10) // Nombre del vendedor arriba a la izquierda
+        const doc = new JsPDF()
 
-    const today = new Date()
-    const formattedDate = today.toLocaleDateString() // Solo la fecha sin hora
-    doc.text(`Fecha: ${formattedDate}`, 196, 10, { align: "right" }) // Fecha arriba a la derecha
+        // Add logo and header
+        doc.setFontSize(22)
+        doc.setTextColor(0, 192, 173) // Color verde #00c0ad
+        doc.setFont("Helvetica", "bold") // Usar Helvetica como aproximación a Recoleta
+        doc.text("Sabornuts", 105, 20, { align: "center" })
 
-    // Add customer info
-    doc.setFontSize(12)
-    doc.setTextColor(0, 0, 0)
-    doc.text(`Cliente: ${customerName}`, 14, 40)
+        // Add vendor name and date
+        doc.setFontSize(10)
+        doc.setTextColor(100, 100, 100)
+        doc.setFont("Helvetica", "normal")
+        doc.text(`Vendedor: ${vendorInfo?.name || ""}`, 14, 10) // Nombre del vendedor arriba a la izquierda
 
-    if (customerAddress) {
-      doc.text(`Dirección: ${customerAddress}`, 14, 48)
-    }
+        const today = new Date()
+        const formattedDate = today.toLocaleDateString() // Solo la fecha sin hora
+        doc.text(`Fecha: ${formattedDate}`, 196, 10, { align: "right" }) // Fecha arriba a la derecha
 
-    // Create table
-    const tableColumn = ["#", "Producto", "Precio Unit.", "Cantidad", "Total"]
-    const tableRows = items.map((item, index) => [
-      index + 1,
-      item.product.name,
-      formatCurrency(item.product.price),
-      item.quantity,
-      formatCurrency(item.product.price * item.quantity),
-    ])
+        // Add customer info
+        doc.setFontSize(12)
+        doc.setTextColor(0, 0, 0)
+        doc.text(`Cliente: ${customerName}`, 14, 40)
 
-    // Add table using autoTable
-    autoTable(doc, {
-      head: [tableColumn],
-      body: tableRows,
-      startY: customerAddress ? 56 : 48,
-      theme: "grid",
-      styles: { fontSize: 10, cellPadding: 3 },
-      headStyles: { fillColor: [80, 54, 42], textColor: [255, 255, 255] }, // #50362a
-      footStyles: { fillColor: [80, 54, 42], textColor: [255, 255, 255] }, // #50362a
-    })
+        if (customerAddress) {
+          doc.text(`Dirección: ${customerAddress}`, 14, 48)
+        }
 
-    // Add totals
-    const finalY = (doc as any).lastAutoTable.finalY || 150
-    const subtotal = getTotal()
-    const discountAmount = (subtotal * discount) / 100
-    const finalTotal = calculateFinalTotal()
+        // Create table
+        const tableColumn = ["#", "Producto", "Precio Unit.", "Cantidad", "Total"]
+        const tableRows = items.map((item, index) => [
+          index + 1,
+          item.product.name,
+          formatCurrency(item.product.price),
+          item.quantity,
+          formatCurrency(item.product.price * item.quantity),
+        ])
 
-    doc.setFontSize(10)
-    doc.text(`Subtotal: ${formatCurrency(subtotal)}`, 140, finalY + 10, { align: "right" })
+        // Add table using autoTable
+        autoTable(doc, {
+          head: [tableColumn],
+          body: tableRows,
+          startY: customerAddress ? 56 : 48,
+          theme: "grid",
+          styles: { fontSize: 10, cellPadding: 3 },
+          headStyles: { fillColor: [80, 54, 42], textColor: [255, 255, 255] }, // #50362a
+          footStyles: { fillColor: [80, 54, 42], textColor: [255, 255, 255] }, // #50362a
+        })
 
-    if (discount > 0) {
-      doc.text(`Descuento (${discount}%): ${formatCurrency(discountAmount)}`, 140, finalY + 18, {
-        align: "right",
+        // Add totals
+        const finalY = (doc as any).lastAutoTable.finalY || 150
+        const subtotal = getTotal()
+        const discountAmount = (subtotal * discount) / 100
+        const finalTotal = calculateFinalTotal()
+
+        doc.setFontSize(10)
+        doc.text(`Subtotal: ${formatCurrency(subtotal)}`, 140, finalY + 10, { align: "right" })
+
+        if (discount > 0) {
+          doc.text(`Descuento (${discount}%): ${formatCurrency(discountAmount)}`, 140, finalY + 18, {
+            align: "right",
+          })
+        }
+
+        doc.setFontSize(12)
+        doc.setFont(undefined, "bold")
+        doc.text(`TOTAL: ${formatCurrency(finalTotal)}`, 140, finalY + (discount > 0 ? 28 : 20), {
+          align: "right",
+        })
+
+        // Add notes if any
+        if (notes) {
+          doc.setFontSize(10)
+          doc.setFont(undefined, "normal")
+          doc.text("Notas:", 14, finalY + 20)
+          doc.text(notes, 14, finalY + 28)
+        }
+
+        // Add footer
+        doc.setFontSize(8)
+        doc.setFont(undefined, "normal")
+        doc.setTextColor(100, 100, 100)
+        doc.text("Gracias por su compra", 105, 280, { align: "center" })
+
+        // Formatear la fecha como DD-MM-YYYY
+        const formattedDateFilename = today
+          .toLocaleDateString("es-ES", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          })
+          .replace(/\//g, "-")
+
+        // Para dispositivos móviles, usar un enfoque diferente para guardar el PDF
+        if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+          // Crear un blob y forzar la descarga con un iframe temporal
+          const pdfBlob = doc.output("blob")
+          const blobUrl = URL.createObjectURL(pdfBlob)
+
+          const filename = `PedidoSabornuts (${customerName} ${formattedDateFilename}).pdf`
+
+          // Crear un enlace invisible y forzar clic
+          const link = document.createElement("a")
+          link.href = blobUrl
+          link.download = filename
+          link.style.display = "none"
+          document.body.appendChild(link)
+          link.click()
+
+          // Limpiar después de un breve retraso
+          setTimeout(() => {
+            document.body.removeChild(link)
+            URL.revokeObjectURL(blobUrl)
+          }, 100)
+        } else {
+          // En desktop, usar el método normal
+          doc.save(`PedidoSabornuts (${customerName} ${formattedDateFilename}).pdf`)
+        }
+
+        // Limpiar carrito y volver a la página principal
+        clearCart()
+        router.push("/productos")
       })
-    }
-
-    doc.setFontSize(12)
-    doc.setFont(undefined, "bold")
-    doc.text(`TOTAL: ${formatCurrency(finalTotal)}`, 140, finalY + (discount > 0 ? 28 : 20), {
-      align: "right",
     })
-
-    // Add notes if any
-    if (notes) {
-      doc.setFontSize(10)
-      doc.setFont(undefined, "normal")
-      doc.text("Notas:", 14, finalY + 20)
-      doc.text(notes, 14, finalY + 28)
-    }
-
-    // Add footer
-    doc.setFontSize(8)
-    doc.setFont(undefined, "normal")
-    doc.setTextColor(100, 100, 100)
-    doc.text("Gracias por su compra", 105, 280, { align: "center" })
-
-    // Formatear la fecha como DD-MM-YYYY
-    const formattedDateFilename = today
-      .toLocaleDateString("es-ES", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      })
-      .replace(/\//g, "-")
-
-    // Para dispositivos móviles, usar un enfoque diferente para guardar el PDF
-    if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
-      // Crear un blob y forzar la descarga con un iframe temporal
-      const pdfBlob = doc.output("blob")
-      const blobUrl = URL.createObjectURL(pdfBlob)
-
-      const filename = `PedidoSabornuts (${customerName} ${formattedDateFilename}).pdf`
-
-      // Crear un enlace invisible y forzar clic
-      const link = document.createElement("a")
-      link.href = blobUrl
-      link.download = filename
-      link.style.display = "none"
-      document.body.appendChild(link)
-      link.click()
-
-      // Limpiar después de un breve retraso
-      setTimeout(() => {
-        document.body.removeChild(link)
-        URL.revokeObjectURL(blobUrl)
-      }, 100)
-    } else {
-      // En desktop, usar el método normal
-      doc.save(`PedidoSabornuts (${customerName} ${formattedDateFilename}).pdf`)
-    }
-
-    // Limpiar carrito y volver a la página principal
-    clearCart()
-    router.push("/productos")
   }
 
   if (!mounted || items.length === 0 || !vendorInfo) {
