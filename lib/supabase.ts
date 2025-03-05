@@ -17,6 +17,11 @@ export type Product = {
   category_id?: number
 }
 
+export type Category = {
+  id: number
+  name: string
+}
+
 export type Customer = {
   id: string
   name: string
@@ -49,7 +54,6 @@ export type Order = {
 }
 
 // Funciones para productos
-// Modificar la función getProducts para manejar mejor los errores y el estado offline
 export async function getProducts(): Promise<Product[]> {
   try {
     const { data, error } = await supabase.from("products").select("*").order("id")
@@ -79,7 +83,6 @@ export async function getProducts(): Promise<Product[]> {
   return []
 }
 
-// Modificar la función updateProductStock para mejor manejo de errores
 export async function updateProductStock(productId: number, newStock: number): Promise<void> {
   try {
     const { error } = await supabase.from("products").update({ stock: newStock }).eq("id", productId)
@@ -119,32 +122,270 @@ export async function updateProductStock(productId: number, newStock: number): P
   }
 }
 
+export async function addProduct(product: Omit<Product, "id">): Promise<Product | null> {
+  try {
+    // Obtener el último ID para asignar uno nuevo
+    const { data: existingProducts } = await supabase
+      .from("products")
+      .select("id")
+      .order("id", { ascending: false })
+      .limit(1)
+
+    const newId = existingProducts && existingProducts.length > 0 ? existingProducts[0].id + 1 : 1
+
+    const newProduct = {
+      ...product,
+      id: newId,
+    }
+
+    const { data, error } = await supabase.from("products").insert(newProduct).select()
+
+    if (error) throw error
+
+    // Actualizar localStorage
+    const savedStock = localStorage.getItem("sabornuts-stock")
+    let products = []
+    if (savedStock) {
+      try {
+        products = JSON.parse(savedStock)
+      } catch (e) {
+        console.error("Error parsing local stock", e)
+      }
+    }
+    products.push(newProduct)
+    localStorage.setItem("sabornuts-stock", JSON.stringify(products))
+
+    return data?.[0] || newProduct
+  } catch (e) {
+    console.error("Error adding product:", e)
+    return null
+  }
+}
+
+export async function updateProduct(product: Product): Promise<Product | null> {
+  try {
+    const { data, error } = await supabase.from("products").update(product).eq("id", product.id).select()
+
+    if (error) throw error
+
+    // Actualizar localStorage
+    const savedStock = localStorage.getItem("sabornuts-stock")
+    if (savedStock) {
+      try {
+        const products = JSON.parse(savedStock)
+        const productIndex = products.findIndex((p: Product) => p.id === product.id)
+        if (productIndex !== -1) {
+          products[productIndex] = product
+          localStorage.setItem("sabornuts-stock", JSON.stringify(products))
+        }
+      } catch (e) {
+        console.error("Error updating local product", e)
+      }
+    }
+
+    return data?.[0] || product
+  } catch (e) {
+    console.error("Error updating product:", e)
+    return null
+  }
+}
+
+export async function deleteProduct(productId: number): Promise<void> {
+  try {
+    const { error } = await supabase.from("products").delete().eq("id", productId)
+
+    if (error) throw error
+
+    // Actualizar localStorage
+    const savedStock = localStorage.getItem("sabornuts-stock")
+    if (savedStock) {
+      try {
+        const products = JSON.parse(savedStock)
+        const updatedProducts = products.filter((p: Product) => p.id !== productId)
+        localStorage.setItem("sabornuts-stock", JSON.stringify(updatedProducts))
+      } catch (e) {
+        console.error("Error deleting local product", e)
+      }
+    }
+  } catch (e) {
+    console.error("Error deleting product:", e)
+  }
+}
+
+// Funciones para categorías
+export async function getCategories(): Promise<Category[]> {
+  try {
+    const { data, error } = await supabase.from("categories").select("*").order("id")
+
+    if (error) throw error
+
+    if (data && data.length > 0) {
+      // Guardar en localStorage como respaldo
+      localStorage.setItem("sabornuts-categories", JSON.stringify(data))
+      return data
+    }
+  } catch (e) {
+    console.error("Error fetching categories:", e)
+  }
+
+  // Fallback a localStorage
+  const savedCategories = localStorage.getItem("sabornuts-categories")
+  if (savedCategories) {
+    try {
+      return JSON.parse(savedCategories)
+    } catch (e) {
+      console.error("Error parsing local categories", e)
+    }
+  }
+
+  // Categorías por defecto
+  return [
+    { id: 1, name: "Frutos Secos" },
+    { id: 2, name: "Frutas Secas" },
+    { id: 3, name: "Semillas" },
+    { id: 4, name: "Mezclas" },
+  ]
+}
+
+export async function addCategory(name: string): Promise<Category | null> {
+  try {
+    // Obtener el último ID para asignar uno nuevo
+    const { data: existingCategories } = await supabase
+      .from("categories")
+      .select("id")
+      .order("id", { ascending: false })
+      .limit(1)
+
+    const newId = existingCategories && existingCategories.length > 0 ? existingCategories[0].id + 1 : 1
+
+    const newCategory = { id: newId, name }
+
+    const { data, error } = await supabase.from("categories").insert(newCategory).select()
+
+    if (error) throw error
+
+    // Actualizar localStorage
+    const savedCategories = localStorage.getItem("sabornuts-categories")
+    let categories = []
+    if (savedCategories) {
+      try {
+        categories = JSON.parse(savedCategories)
+      } catch (e) {
+        console.error("Error parsing local categories", e)
+      }
+    }
+    categories.push(newCategory)
+    localStorage.setItem("sabornuts-categories", JSON.stringify(categories))
+
+    return data?.[0] || newCategory
+  } catch (e) {
+    console.error("Error adding category:", e)
+    return null
+  }
+}
+
+export async function updateCategory(category: Category): Promise<Category | null> {
+  try {
+    const { data, error } = await supabase.from("categories").update(category).eq("id", category.id).select()
+
+    if (error) throw error
+
+    // Actualizar localStorage
+    const savedCategories = localStorage.getItem("sabornuts-categories")
+    if (savedCategories) {
+      try {
+        const categories = JSON.parse(savedCategories)
+        const categoryIndex = categories.findIndex((c: Category) => c.id === category.id)
+        if (categoryIndex !== -1) {
+          categories[categoryIndex] = category
+          localStorage.setItem("sabornuts-categories", JSON.stringify(categories))
+        }
+      } catch (e) {
+        console.error("Error updating local category", e)
+      }
+    }
+
+    return data?.[0] || category
+  } catch (e) {
+    console.error("Error updating category:", e)
+    return null
+  }
+}
+
+export async function deleteCategory(categoryId: number): Promise<void> {
+  try {
+    const { error } = await supabase.from("categories").delete().eq("id", categoryId)
+
+    if (error) throw error
+
+    // Actualizar localStorage
+    const savedCategories = localStorage.getItem("sabornuts-categories")
+    if (savedCategories) {
+      try {
+        const categories = JSON.parse(savedCategories)
+        const updatedCategories = categories.filter((c: Category) => c.id !== categoryId)
+        localStorage.setItem("sabornuts-categories", JSON.stringify(updatedCategories))
+      } catch (e) {
+        console.error("Error deleting local category", e)
+      }
+    }
+  } catch (e) {
+    console.error("Error deleting category:", e)
+  }
+}
+
 // Funciones para clientes
 export async function getCustomers(): Promise<Customer[]> {
-  const { data, error } = await supabase.from("customers").select("*").order("name")
+  try {
+    const { data, error } = await supabase.from("customers").select("*").order("name")
 
-  if (error) {
-    console.error("Error fetching customers:", error)
-    // Fallback a localStorage
+    if (error) throw error
+
+    if (data && data.length > 0) {
+      // Guardar en localStorage como respaldo
+      localStorage.setItem("sabornuts-customers", JSON.stringify(data))
+      return data
+    }
+  } catch (e) {
+    console.error("Error fetching customers:", e)
+  }
+
+  // Fallback a localStorage
+  const savedCustomers = localStorage.getItem("sabornuts-customers")
+  if (savedCustomers) {
+    try {
+      return JSON.parse(savedCustomers)
+    } catch (e) {
+      console.error("Error parsing local customers", e)
+    }
+  }
+
+  return []
+}
+
+export async function addCustomer(customer: Customer): Promise<Customer | null> {
+  try {
+    const { data, error } = await supabase.from("customers").insert(customer).select()
+
+    if (error) throw error
+
+    // Actualizar localStorage
     const savedCustomers = localStorage.getItem("sabornuts-customers")
+    let customers = []
     if (savedCustomers) {
       try {
-        return JSON.parse(savedCustomers)
+        customers = JSON.parse(savedCustomers)
       } catch (e) {
         console.error("Error parsing local customers", e)
       }
     }
-    return []
-  }
+    customers.push(customer)
+    localStorage.setItem("sabornuts-customers", JSON.stringify(customers))
 
-  return data || []
-}
+    return data?.[0] || customer
+  } catch (e) {
+    console.error("Error adding customer:", e)
 
-export async function addCustomer(customer: Customer): Promise<Customer | null> {
-  const { data, error } = await supabase.from("customers").insert(customer).select()
-
-  if (error) {
-    console.error("Error adding customer:", error)
     // Fallback a localStorage
     const savedCustomers = localStorage.getItem("sabornuts-customers")
     let customers = []
@@ -157,14 +398,90 @@ export async function addCustomer(customer: Customer): Promise<Customer | null> 
     }
     customers.push(customer)
     localStorage.setItem("sabornuts-customers", JSON.stringify(customers))
+
     return customer
   }
+}
 
-  return data?.[0] || null
+export async function updateCustomer(customer: Customer): Promise<Customer | null> {
+  try {
+    const { data, error } = await supabase.from("customers").update(customer).eq("id", customer.id).select()
+
+    if (error) throw error
+
+    // Actualizar localStorage
+    const savedCustomers = localStorage.getItem("sabornuts-customers")
+    if (savedCustomers) {
+      try {
+        const customers = JSON.parse(savedCustomers)
+        const customerIndex = customers.findIndex((c: Customer) => c.id === customer.id)
+        if (customerIndex !== -1) {
+          customers[customerIndex] = customer
+          localStorage.setItem("sabornuts-customers", JSON.stringify(customers))
+        }
+      } catch (e) {
+        console.error("Error updating local customer", e)
+      }
+    }
+
+    return data?.[0] || customer
+  } catch (e) {
+    console.error("Error updating customer:", e)
+
+    // Fallback a localStorage
+    const savedCustomers = localStorage.getItem("sabornuts-customers")
+    if (savedCustomers) {
+      try {
+        const customers = JSON.parse(savedCustomers)
+        const customerIndex = customers.findIndex((c: Customer) => c.id === customer.id)
+        if (customerIndex !== -1) {
+          customers[customerIndex] = customer
+          localStorage.setItem("sabornuts-customers", JSON.stringify(customers))
+        }
+      } catch (e) {
+        console.error("Error updating local customer", e)
+      }
+    }
+
+    return customer
+  }
+}
+
+export async function deleteCustomer(customerId: string): Promise<void> {
+  try {
+    const { error } = await supabase.from("customers").delete().eq("id", customerId)
+
+    if (error) throw error
+
+    // Actualizar localStorage
+    const savedCustomers = localStorage.getItem("sabornuts-customers")
+    if (savedCustomers) {
+      try {
+        const customers = JSON.parse(savedCustomers)
+        const updatedCustomers = customers.filter((c: Customer) => c.id !== customerId)
+        localStorage.setItem("sabornuts-customers", JSON.stringify(updatedCustomers))
+      } catch (e) {
+        console.error("Error deleting local customer", e)
+      }
+    }
+  } catch (e) {
+    console.error("Error deleting customer:", e)
+
+    // Fallback a localStorage
+    const savedCustomers = localStorage.getItem("sabornuts-customers")
+    if (savedCustomers) {
+      try {
+        const customers = JSON.parse(savedCustomers)
+        const updatedCustomers = customers.filter((c: Customer) => c.id !== customerId)
+        localStorage.setItem("sabornuts-customers", JSON.stringify(updatedCustomers))
+      } catch (e) {
+        console.error("Error deleting local customer", e)
+      }
+    }
+  }
 }
 
 // Funciones para pedidos
-// Mejorar las funciones de pedidos para mejor manejo de errores
 export async function getOrders(): Promise<Order[]> {
   try {
     const { data, error } = await supabase
@@ -229,49 +546,52 @@ export async function getPendingOrders(): Promise<Order[]> {
 }
 
 export async function addOrder(order: Order): Promise<Order | null> {
-  // Primero insertamos el pedido
-  const { data: orderData, error: orderError } = await supabase
-    .from("orders")
-    .insert({
-      id: order.id,
-      date: order.date,
-      customer_name: order.customer_name,
-      customer_address: order.customer_address,
-      vendor_name: order.vendor_name,
-      store_location: order.store_location,
-      total: order.total,
-      discount: order.discount,
-      final_total: order.final_total,
-      status: order.status,
-      notes: order.notes,
-    })
-    .select()
+  try {
+    // Primero insertamos el pedido
+    const { data: orderData, error: orderError } = await supabase
+      .from("orders")
+      .insert({
+        id: order.id,
+        date: order.date,
+        customer_name: order.customer_name,
+        customer_address: order.customer_address,
+        vendor_name: order.vendor_name,
+        store_location: order.store_location,
+        total: order.total,
+        discount: order.discount,
+        final_total: order.final_total,
+        status: order.status,
+        notes: order.notes,
+      })
+      .select()
 
-  if (orderError) {
-    console.error("Error adding order:", orderError)
+    if (orderError) throw orderError
+
+    // Luego insertamos los items del pedido
+    const orderItems = order.items.map((item) => ({
+      order_id: order.id,
+      product_id: item.product_id,
+      product_name: item.product_name,
+      price: item.price,
+      quantity: item.quantity,
+    }))
+
+    const { error: itemsError } = await supabase.from("order_items").insert(orderItems)
+
+    if (itemsError) throw itemsError
+
+    // Guardar en localStorage como respaldo
+    saveOrderToLocalStorage(order)
+
+    return orderData?.[0] || order
+  } catch (e) {
+    console.error("Error adding order:", e)
+
     // Fallback a localStorage
     saveOrderToLocalStorage(order)
+
     return order
   }
-
-  // Luego insertamos los items del pedido
-  const orderItems = order.items.map((item) => ({
-    order_id: order.id,
-    product_id: item.product_id,
-    product_name: item.product_name,
-    price: item.price,
-    quantity: item.quantity,
-  }))
-
-  const { error: itemsError } = await supabase.from("order_items").insert(orderItems)
-
-  if (itemsError) {
-    console.error("Error adding order items:", itemsError)
-    // Fallback a localStorage
-    saveOrderToLocalStorage(order)
-  }
-
-  return orderData?.[0] || null
 }
 
 export async function updateOrderStatus(
@@ -280,32 +600,42 @@ export async function updateOrderStatus(
   notes?: string,
   address?: string,
 ): Promise<void> {
-  const updateData: any = { status }
-  if (notes !== undefined) updateData.notes = notes
-  if (address !== undefined) updateData.customer_address = address
+  try {
+    const updateData: any = { status }
+    if (notes !== undefined) updateData.notes = notes
+    if (address !== undefined) updateData.customer_address = address
 
-  const { error } = await supabase.from("orders").update(updateData).eq("id", orderId)
+    const { error } = await supabase.from("orders").update(updateData).eq("id", orderId)
 
-  if (error) {
-    console.error("Error updating order status:", error)
+    if (error) throw error
+
+    // Actualizar localStorage
+    updateOrderStatusInLocalStorage(orderId, status, notes, address)
+  } catch (e) {
+    console.error("Error updating order status:", e)
+
     // Fallback a localStorage
     updateOrderStatusInLocalStorage(orderId, status, notes, address)
   }
 }
 
 export async function deleteOrder(orderId: string): Promise<void> {
-  // Primero eliminamos los items del pedido
-  const { error: itemsError } = await supabase.from("order_items").delete().eq("order_id", orderId)
+  try {
+    // Primero eliminamos los items del pedido
+    const { error: itemsError } = await supabase.from("order_items").delete().eq("order_id", orderId)
 
-  if (itemsError) {
-    console.error("Error deleting order items:", itemsError)
-  }
+    if (itemsError) throw itemsError
 
-  // Luego eliminamos el pedido
-  const { error: orderError } = await supabase.from("orders").delete().eq("id", orderId)
+    // Luego eliminamos el pedido
+    const { error: orderError } = await supabase.from("orders").delete().eq("id", orderId)
 
-  if (orderError) {
-    console.error("Error deleting order:", orderError)
+    if (orderError) throw orderError
+
+    // Actualizar localStorage
+    deleteOrderFromLocalStorage(orderId)
+  } catch (e) {
+    console.error("Error deleting order:", e)
+
     // Fallback a localStorage
     deleteOrderFromLocalStorage(orderId)
   }
@@ -325,7 +655,14 @@ function saveOrderToLocalStorage(order: Order): void {
     }
   }
 
-  orderHistory.unshift(order)
+  // Verificar si el pedido ya existe
+  const existingOrderIndex = orderHistory.findIndex((o) => o.id === order.id)
+  if (existingOrderIndex !== -1) {
+    orderHistory[existingOrderIndex] = order
+  } else {
+    orderHistory.unshift(order)
+  }
+
   localStorage.setItem("sabornuts-order-history", JSON.stringify(orderHistory))
 
   // Guardar en pedidos pendientes si no está entregado
@@ -341,7 +678,14 @@ function saveOrderToLocalStorage(order: Order): void {
       }
     }
 
-    pendingOrders.unshift(order)
+    // Verificar si el pedido ya existe
+    const existingPendingIndex = pendingOrders.findIndex((o) => o.id === order.id)
+    if (existingPendingIndex !== -1) {
+      pendingOrders[existingPendingIndex] = order
+    } else {
+      pendingOrders.unshift(order)
+    }
+
     localStorage.setItem("sabornuts-pending-orders", JSON.stringify(pendingOrders))
   }
 }

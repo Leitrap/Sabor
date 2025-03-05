@@ -173,23 +173,27 @@ export default function ResumenPage() {
 
     // Add logo and header
     doc.setFontSize(22)
-    doc.setTextColor(0, 192, 173) // #00c0ad
+    doc.setTextColor(80, 54, 42) // Color marrón #50362a
+    doc.setFont("Helvetica", "bold") // Usar Helvetica como aproximación a Recoleta
     doc.text("Sabornuts", 105, 20, { align: "center" })
 
-    // Add date
+    // Add vendor name and date
     doc.setFontSize(10)
     doc.setTextColor(100, 100, 100)
-    const today = new Date()
-    doc.text(`Fecha: ${today.toLocaleDateString()} - Hora: ${today.toLocaleTimeString()}`, 105, 30, { align: "center" })
+    doc.setFont("Helvetica", "normal")
+    doc.text(`Vendedor: ${vendorInfo?.name || ""}`, 14, 10) // Nombre del vendedor arriba a la izquierda
 
-    // Add customer and vendor info
+    const today = new Date()
+    const formattedDate = today.toLocaleDateString() // Solo la fecha sin hora
+    doc.text(`Fecha: ${formattedDate}`, 196, 10, { align: "right" }) // Fecha arriba a la derecha
+
+    // Add customer info
     doc.setFontSize(12)
     doc.setTextColor(0, 0, 0)
     doc.text(`Cliente: ${customerName}`, 14, 40)
-    doc.text(`Vendedor: ${vendorInfo?.name || ""}`, 14, 48)
 
     if (customerAddress) {
-      doc.text(`Dirección: ${customerAddress}`, 14, 56)
+      doc.text(`Dirección: ${customerAddress}`, 14, 48)
     }
 
     // Create table
@@ -206,7 +210,7 @@ export default function ResumenPage() {
     autoTable(doc, {
       head: [tableColumn],
       body: tableRows,
-      startY: customerAddress ? 65 : 56,
+      startY: customerAddress ? 56 : 48,
       theme: "grid",
       styles: { fontSize: 10, cellPadding: 3 },
       headStyles: { fillColor: [80, 54, 42], textColor: [255, 255, 255] }, // #50362a
@@ -215,11 +219,24 @@ export default function ResumenPage() {
 
     // Add totals
     const finalY = (doc as any).lastAutoTable.finalY || 150
+    const subtotal = getTotal()
+    const discountAmount = (subtotal * discount) / 100
     const finalTotal = calculateFinalTotal()
+
+    doc.setFontSize(10)
+    doc.text(`Subtotal: ${formatCurrency(subtotal)}`, 140, finalY + 10, { align: "right" })
+
+    if (discount > 0) {
+      doc.text(`Descuento (${discount}%): ${formatCurrency(discountAmount)}`, 140, finalY + 18, {
+        align: "right",
+      })
+    }
 
     doc.setFontSize(12)
     doc.setFont(undefined, "bold")
-    doc.text(`TOTAL: ${formatCurrency(finalTotal)}`, 140, finalY + 10, { align: "right" })
+    doc.text(`TOTAL: ${formatCurrency(finalTotal)}`, 140, finalY + (discount > 0 ? 28 : 20), {
+      align: "right",
+    })
 
     // Add notes if any
     if (notes) {
@@ -236,7 +253,7 @@ export default function ResumenPage() {
     doc.text("Gracias por su compra", 105, 280, { align: "center" })
 
     // Formatear la fecha como DD-MM-YYYY
-    const formattedDate = today
+    const formattedDateFilename = today
       .toLocaleDateString("es-ES", {
         day: "2-digit",
         month: "2-digit",
@@ -244,8 +261,26 @@ export default function ResumenPage() {
       })
       .replace(/\//g, "-")
 
-    // Crear el nombre del archivo con el formato solicitado
-    doc.save(`PedidoSabornuts (${customerName} ${formattedDate}).pdf`)
+    // Para dispositivos móviles, usar un enfoque diferente para guardar el PDF
+    if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+      // Crear un blob y abrir en una nueva ventana
+      const pdfBlob = doc.output("blob")
+      const blobUrl = URL.createObjectURL(pdfBlob)
+
+      // Crear un enlace y forzar la descarga
+      const link = document.createElement("a")
+      link.href = blobUrl
+      link.download = `PedidoSabornuts (${customerName} ${formattedDateFilename}).pdf`
+      link.click()
+
+      // Limpiar
+      setTimeout(() => {
+        URL.revokeObjectURL(blobUrl)
+      }, 100)
+    } else {
+      // En desktop, usar el método normal
+      doc.save(`PedidoSabornuts (${customerName} ${formattedDateFilename}).pdf`)
+    }
 
     // Limpiar carrito y volver a la página principal
     clearCart()
@@ -386,6 +421,13 @@ export default function ResumenPage() {
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
             />
+          </div>
+
+          <div className="mt-4 p-4 bg-muted rounded-md">
+            <div className="flex justify-between items-center">
+              <span className="font-medium">Precio Total:</span>
+              <span className="text-xl font-bold">{formatCurrency(calculateFinalTotal())}</span>
+            </div>
           </div>
         </div>
 
