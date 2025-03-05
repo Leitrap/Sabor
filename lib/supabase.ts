@@ -60,77 +60,212 @@ export type Order = {
   items: OrderItem[]
 }
 
+// Datos de productos predefinidos para usar como fallback
+const defaultProducts: Product[] = [
+  {
+    id: 1,
+    name: "Almendras",
+    price: 3500,
+    image: "/placeholder.svg?height=200&width=200",
+    stock: 50,
+    category_id: 1,
+  },
+  {
+    id: 2,
+    name: "Nueces",
+    price: 3200,
+    image: "/placeholder.svg?height=200&width=200",
+    stock: 45,
+    category_id: 1,
+  },
+  {
+    id: 3,
+    name: "Castañas de Cajú",
+    price: 2800,
+    image: "/placeholder.svg?height=200&width=200",
+    stock: 30,
+    category_id: 1,
+  },
+  {
+    id: 4,
+    name: "Pasas de Uva",
+    price: 1800,
+    image: "/placeholder.svg?height=200&width=200",
+    stock: 60,
+    category_id: 2,
+  },
+  {
+    id: 5,
+    name: "Dátiles",
+    price: 2200,
+    image: "/placeholder.svg?height=200&width=200",
+    stock: 40,
+    category_id: 2,
+  },
+  {
+    id: 6,
+    name: "Semillas de Girasol",
+    price: 1500,
+    image: "/placeholder.svg?height=200&width=200",
+    stock: 70,
+    category_id: 3,
+  },
+  {
+    id: 7,
+    name: "Semillas de Chía",
+    price: 1900,
+    image: "/placeholder.svg?height=200&width=200",
+    stock: 55,
+    category_id: 3,
+  },
+  {
+    id: 8,
+    name: "Mix Energético",
+    price: 2500,
+    image: "/placeholder.svg?height=200&width=200",
+    stock: 35,
+    category_id: 4,
+  },
+  {
+    id: 9,
+    name: "Mix Tropical",
+    price: 2700,
+    image: "/placeholder.svg?height=200&width=200",
+    stock: 25,
+    category_id: 4,
+  },
+  {
+    id: 10,
+    name: "Pistachos",
+    price: 4000,
+    image: "/placeholder.svg?height=200&width=200",
+    stock: 20,
+    category_id: 1,
+  },
+  {
+    id: 11,
+    name: "Avellanas",
+    price: 3800,
+    image: "/placeholder.svg?height=200&width=200",
+    stock: 15,
+    category_id: 1,
+  },
+  {
+    id: 12,
+    name: "Ciruelas Pasas",
+    price: 2000,
+    image: "/placeholder.svg?height=200&width=200",
+    stock: 45,
+    category_id: 2,
+  },
+]
+
+// Categorías predefinidas para usar como fallback
+const defaultCategories: Category[] = [
+  { id: 1, name: "Frutos Secos" },
+  { id: 2, name: "Frutas Secas" },
+  { id: 3, name: "Semillas" },
+  { id: 4, name: "Mezclas" },
+]
+
 // Funciones para productos
 export async function getProducts(): Promise<Product[]> {
   try {
+    // Verificar si las variables de entorno están configuradas
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      console.warn("Supabase environment variables are not set, using default products")
+      return defaultProducts
+    }
+
     const { data, error } = await supabase.from("products").select("*").order("id")
 
-    if (error) throw error
+    if (error) {
+      console.error("Error fetching products from Supabase:", error)
+      throw error
+    }
 
     if (data && data.length > 0) {
       // Guardar en localStorage como respaldo
-      localStorage.setItem("sabornuts-stock", JSON.stringify(data))
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sabornuts-stock", JSON.stringify(data))
+      }
       return data
+    } else {
+      console.warn("No products found in Supabase, using default products")
+      return defaultProducts
     }
   } catch (e) {
-    console.error("Error fetching products:", e)
+    console.error("Error in getProducts:", e)
   }
 
-  // Fallback a localStorage si hay error o no hay datos
-  const savedStock = localStorage.getItem("sabornuts-stock")
-  if (savedStock) {
-    try {
-      return JSON.parse(savedStock)
-    } catch (e) {
-      console.error("Error parsing local stock", e)
+  // Fallback a localStorage si hay error
+  if (typeof window !== "undefined") {
+    const savedStock = localStorage.getItem("sabornuts-stock")
+    if (savedStock) {
+      try {
+        return JSON.parse(savedStock)
+      } catch (e) {
+        console.error("Error parsing local stock", e)
+      }
     }
   }
 
   // Si todo falla, devolver los productos predefinidos
-  return []
+  console.warn("Using default products as fallback")
+  return defaultProducts
 }
 
 export async function updateProductStock(productId: number, newStock: number): Promise<void> {
   try {
+    // Verificar si las variables de entorno están configuradas
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      console.warn("Supabase environment variables are not set, updating only local storage")
+      updateLocalStock(productId, newStock)
+      return
+    }
+
     const { error } = await supabase.from("products").update({ stock: newStock }).eq("id", productId)
 
-    if (error) throw error
+    if (error) {
+      console.error("Error updating product stock in Supabase:", error)
+      throw error
+    }
 
     // Actualizar localStorage como respaldo
-    const savedStock = localStorage.getItem("sabornuts-stock")
-    if (savedStock) {
-      try {
-        const products = JSON.parse(savedStock)
-        const productIndex = products.findIndex((p: Product) => p.id === productId)
-        if (productIndex !== -1) {
-          products[productIndex].stock = newStock
-          localStorage.setItem("sabornuts-stock", JSON.stringify(products))
-        }
-      } catch (e) {
-        console.error("Error updating local stock", e)
-      }
-    }
+    updateLocalStock(productId, newStock)
   } catch (e) {
-    console.error("Error updating product stock:", e)
+    console.error("Error in updateProductStock:", e)
     // Actualizar solo localStorage si falla Supabase
-    const savedStock = localStorage.getItem("sabornuts-stock")
-    if (savedStock) {
-      try {
-        const products = JSON.parse(savedStock)
-        const productIndex = products.findIndex((p: Product) => p.id === productId)
-        if (productIndex !== -1) {
-          products[productIndex].stock = newStock
-          localStorage.setItem("sabornuts-stock", JSON.stringify(products))
-        }
-      } catch (e) {
-        console.error("Error updating local stock", e)
+    updateLocalStock(productId, newStock)
+  }
+}
+
+function updateLocalStock(productId: number, newStock: number): void {
+  if (typeof window === "undefined") return
+
+  const savedStock = localStorage.getItem("sabornuts-stock")
+  if (savedStock) {
+    try {
+      const products = JSON.parse(savedStock)
+      const productIndex = products.findIndex((p: Product) => p.id === productId)
+      if (productIndex !== -1) {
+        products[productIndex].stock = newStock
+        localStorage.setItem("sabornuts-stock", JSON.stringify(products))
       }
+    } catch (e) {
+      console.error("Error updating local stock", e)
     }
   }
 }
 
 export async function addProduct(product: Omit<Product, "id">): Promise<Product | null> {
   try {
+    // Verificar si las variables de entorno están configuradas
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      console.warn("Supabase environment variables are not set, adding product only to local storage")
+      return addProductToLocalStorage(product)
+    }
+
     // Obtener el último ID para asignar uno nuevo
     const { data: existingProducts } = await supabase
       .from("products")
@@ -147,111 +282,183 @@ export async function addProduct(product: Omit<Product, "id">): Promise<Product 
 
     const { data, error } = await supabase.from("products").insert(newProduct).select()
 
-    if (error) throw error
+    if (error) {
+      console.error("Error adding product to Supabase:", error)
+      throw error
+    }
 
     // Actualizar localStorage
-    const savedStock = localStorage.getItem("sabornuts-stock")
-    let products = []
-    if (savedStock) {
-      try {
-        products = JSON.parse(savedStock)
-      } catch (e) {
-        console.error("Error parsing local stock", e)
-      }
-    }
-    products.push(newProduct)
-    localStorage.setItem("sabornuts-stock", JSON.stringify(products))
+    addProductToLocalStorage(newProduct)
 
     return data?.[0] || newProduct
   } catch (e) {
-    console.error("Error adding product:", e)
-    return null
+    console.error("Error in addProduct:", e)
+    return addProductToLocalStorage(product)
   }
+}
+
+function addProductToLocalStorage(product: Omit<Product, "id"> | Product): Product {
+  if (typeof window === "undefined") {
+    return product as Product
+  }
+
+  const savedStock = localStorage.getItem("sabornuts-stock")
+  let products: Product[] = []
+
+  if (savedStock) {
+    try {
+      products = JSON.parse(savedStock)
+    } catch (e) {
+      console.error("Error parsing local stock", e)
+    }
+  }
+
+  // Si el producto ya tiene ID, usarlo, de lo contrario generar uno nuevo
+  const newProduct =
+    "id" in product
+      ? (product as Product)
+      : {
+          ...product,
+          id: products.length > 0 ? Math.max(...products.map((p) => p.id)) + 1 : 1,
+        }
+
+  products.push(newProduct)
+  localStorage.setItem("sabornuts-stock", JSON.stringify(products))
+
+  return newProduct
 }
 
 export async function updateProduct(product: Product): Promise<Product | null> {
   try {
+    // Verificar si las variables de entorno están configuradas
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      console.warn("Supabase environment variables are not set, updating product only in local storage")
+      return updateProductInLocalStorage(product)
+    }
+
     const { data, error } = await supabase.from("products").update(product).eq("id", product.id).select()
 
-    if (error) throw error
+    if (error) {
+      console.error("Error updating product in Supabase:", error)
+      throw error
+    }
 
     // Actualizar localStorage
-    const savedStock = localStorage.getItem("sabornuts-stock")
-    if (savedStock) {
-      try {
-        const products = JSON.parse(savedStock)
-        const productIndex = products.findIndex((p: Product) => p.id === product.id)
-        if (productIndex !== -1) {
-          products[productIndex] = product
-          localStorage.setItem("sabornuts-stock", JSON.stringify(products))
-        }
-      } catch (e) {
-        console.error("Error updating local product", e)
-      }
-    }
+    updateProductInLocalStorage(product)
 
     return data?.[0] || product
   } catch (e) {
-    console.error("Error updating product:", e)
-    return null
+    console.error("Error in updateProduct:", e)
+    return updateProductInLocalStorage(product)
   }
+}
+
+function updateProductInLocalStorage(product: Product): Product {
+  if (typeof window === "undefined") {
+    return product
+  }
+
+  const savedStock = localStorage.getItem("sabornuts-stock")
+  if (savedStock) {
+    try {
+      const products = JSON.parse(savedStock)
+      const productIndex = products.findIndex((p: Product) => p.id === product.id)
+      if (productIndex !== -1) {
+        products[productIndex] = product
+        localStorage.setItem("sabornuts-stock", JSON.stringify(products))
+      }
+    } catch (e) {
+      console.error("Error updating local product", e)
+    }
+  }
+
+  return product
 }
 
 export async function deleteProduct(productId: number): Promise<void> {
   try {
+    // Verificar si las variables de entorno están configuradas
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      console.warn("Supabase environment variables are not set, deleting product only from local storage")
+      deleteProductFromLocalStorage(productId)
+      return
+    }
+
     const { error } = await supabase.from("products").delete().eq("id", productId)
 
-    if (error) throw error
+    if (error) {
+      console.error("Error deleting product from Supabase:", error)
+      throw error
+    }
 
     // Actualizar localStorage
-    const savedStock = localStorage.getItem("sabornuts-stock")
-    if (savedStock) {
-      try {
-        const products = JSON.parse(savedStock)
-        const updatedProducts = products.filter((p: Product) => p.id !== productId)
-        localStorage.setItem("sabornuts-stock", JSON.stringify(updatedProducts))
-      } catch (e) {
-        console.error("Error deleting local product", e)
-      }
-    }
+    deleteProductFromLocalStorage(productId)
   } catch (e) {
-    console.error("Error deleting product:", e)
+    console.error("Error in deleteProduct:", e)
+    deleteProductFromLocalStorage(productId)
+  }
+}
+
+function deleteProductFromLocalStorage(productId: number): void {
+  if (typeof window === "undefined") return
+
+  const savedStock = localStorage.getItem("sabornuts-stock")
+  if (savedStock) {
+    try {
+      const products = JSON.parse(savedStock)
+      const updatedProducts = products.filter((p: Product) => p.id !== productId)
+      localStorage.setItem("sabornuts-stock", JSON.stringify(updatedProducts))
+    } catch (e) {
+      console.error("Error deleting local product", e)
+    }
   }
 }
 
 // Funciones para categorías
 export async function getCategories(): Promise<Category[]> {
   try {
+    // Verificar si las variables de entorno están configuradas
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      console.warn("Supabase environment variables are not set, using default categories")
+      return defaultCategories
+    }
+
     const { data, error } = await supabase.from("categories").select("*").order("id")
 
-    if (error) throw error
+    if (error) {
+      console.error("Error fetching categories from Supabase:", error)
+      throw error
+    }
 
     if (data && data.length > 0) {
       // Guardar en localStorage como respaldo
-      localStorage.setItem("sabornuts-categories", JSON.stringify(data))
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sabornuts-categories", JSON.stringify(data))
+      }
       return data
+    } else {
+      console.warn("No categories found in Supabase, using default categories")
+      return defaultCategories
     }
   } catch (e) {
-    console.error("Error fetching categories:", e)
+    console.error("Error in getCategories:", e)
   }
 
   // Fallback a localStorage
-  const savedCategories = localStorage.getItem("sabornuts-categories")
-  if (savedCategories) {
-    try {
-      return JSON.parse(savedCategories)
-    } catch (e) {
-      console.error("Error parsing local categories", e)
+  if (typeof window !== "undefined") {
+    const savedCategories = localStorage.getItem("sabornuts-categories")
+    if (savedCategories) {
+      try {
+        return JSON.parse(savedCategories)
+      } catch (e) {
+        console.error("Error parsing local categories", e)
+      }
     }
   }
 
   // Categorías por defecto
-  return [
-    { id: 1, name: "Frutos Secos" },
-    { id: 2, name: "Frutas Secas" },
-    { id: 3, name: "Semillas" },
-    { id: 4, name: "Mezclas" },
-  ]
+  console.warn("Using default categories as fallback")
+  return defaultCategories
 }
 
 export async function addCategory(name: string): Promise<Category | null> {

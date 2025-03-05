@@ -25,7 +25,6 @@ import { QuantitySelector } from "@/components/quantity-selector"
 import { Cart } from "@/components/cart"
 import { ProductCarousel } from "@/components/product-carousel"
 import { useCart } from "@/components/cart-provider"
-import { products, loadSavedStock } from "@/data/products"
 import { formatCurrency } from "@/lib/utils"
 import type { Product } from "@/components/cart-provider"
 import { useRouter } from "next/navigation"
@@ -52,14 +51,7 @@ import { CustomerSelector } from "@/components/customer-selector"
 import { ProductManager } from "@/components/product-manager"
 import { useTheme } from "next-themes"
 import { getProducts, getCategories, supabase } from "@/lib/supabase"
-
-// Categorías de productos
-const categoryMap = {
-  nuts: "Frutos Secos",
-  dried: "Frutas Secas",
-  seeds: "Semillas",
-  mixes: "Mezclas",
-}
+import { clearVendorInfo } from "@/lib/auth"
 
 export default function ProductsPage() {
   const { setCustomerName, customerName, setCustomerAddress, customerAddress, setIsCartOpen, isCartOpen, items } =
@@ -80,21 +72,31 @@ export default function ProductsPage() {
   const [isAddressDialogOpen, setIsAddressDialogOpen] = useState(false)
   const [isProductManagerOpen, setIsProductManagerOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [mounted, setMounted] = useState(false)
   const router = useRouter()
-  const { vendorInfo, clearVendorInfo } = useVendor()
+  const { vendorInfo } = useVendor()
   const { toast } = useToast()
   const { theme, setTheme } = useTheme()
+
+  // Marcar como montado para evitar errores de hidratación
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Cargar productos y categorías
   const loadProductsAndCategories = useCallback(async () => {
     setIsLoading(true)
     try {
-      // Cargar productos desde Supabase
+      console.log("Loading products and categories...")
+
+      // Cargar productos desde Supabase o fallback
       const loadedProducts = await getProducts()
+      console.log(`Loaded ${loadedProducts.length} products`)
       setAllProducts(loadedProducts)
 
-      // Cargar categorías desde Supabase
+      // Cargar categorías desde Supabase o fallback
       const loadedCategories = await getCategories()
+      console.log(`Loaded ${loadedCategories.length} categories`)
 
       // Crear categorías para la UI
       const uiCategories = [{ id: "all", name: "Todos", products: [] }]
@@ -136,9 +138,17 @@ export default function ProductsPage() {
         variant: "destructive",
       })
 
-      // Usar datos locales como respaldo
-      setAllProducts(products)
-      filterProducts(products, activeCategory, searchTerm, categories)
+      // Intentar cargar desde localStorage como respaldo
+      const savedStock = localStorage.getItem("sabornuts-stock")
+      if (savedStock) {
+        try {
+          const products = JSON.parse(savedStock)
+          setAllProducts(products)
+          filterProducts(products, activeCategory, searchTerm, categories)
+        } catch (e) {
+          console.error("Error parsing local stock", e)
+        }
+      }
     } finally {
       setIsLoading(false)
     }
@@ -173,9 +183,11 @@ export default function ProductsPage() {
     [],
   )
 
-  // Cargar el stock guardado y configurar suscripción a cambios
+  // Cargar productos y configurar suscripción a cambios
   useEffect(() => {
-    loadSavedStock()
+    if (!mounted) return
+
+    console.log("Setting up data loading and subscriptions...")
     loadProductsAndCategories()
 
     // Configurar suscripción a cambios en productos
@@ -189,7 +201,7 @@ export default function ProductsPage() {
           table: "products",
         },
         () => {
-          // Recargar productos cuando haya cambios
+          console.log("Products changed, reloading...")
           loadProductsAndCategories()
         },
       )
@@ -206,7 +218,7 @@ export default function ProductsPage() {
           table: "categories",
         },
         () => {
-          // Recargar categorías cuando haya cambios
+          console.log("Categories changed, reloading...")
           loadProductsAndCategories()
         },
       )
@@ -234,23 +246,25 @@ export default function ProductsPage() {
 
     return () => {
       // Limpiar suscripciones al desmontar
+      console.log("Cleaning up subscriptions...")
       supabase.removeChannel(productsSubscription)
       supabase.removeChannel(categoriesSubscription)
       supabase.removeChannel(ordersSubscription)
     }
-  }, [toast, loadProductsAndCategories])
+  }, [mounted, toast, loadProductsAndCategories])
 
   // Filtrar productos cuando cambie la categoría o el término de búsqueda
   useEffect(() => {
+    if (!mounted) return
     filterProducts(allProducts, activeCategory, searchTerm, categories)
-  }, [searchTerm, activeCategory, allProducts, categories, filterProducts])
+  }, [searchTerm, activeCategory, allProducts, categories, filterProducts, mounted])
 
   // Verificar si hay un vendedor logueado
   useEffect(() => {
-    if (!vendorInfo) {
+    if (mounted && !vendorInfo) {
       router.push("/")
     }
-  }, [vendorInfo, router])
+  }, [vendorInfo, router, mounted])
 
   const handleAddToCart = (product: Product) => {
     setSelectedProduct(product)
@@ -307,8 +321,14 @@ export default function ProductsPage() {
     loadProductsAndCategories()
   }
 
+  // No renderizar nada hasta que el componente esté montado
+  if (!mounted) {
+    return null
+  }
+
+  // No renderizar si no hay vendedor (redirigirá a login)
   if (!vendorInfo) {
-    return null // No renderizar nada si no hay vendedor (redirigirá a login)
+    return null
   }
 
   return (
@@ -316,7 +336,7 @@ export default function ProductsPage() {
       <header className="sticky top-0 z-40 bg-background border-b">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl md:text-3xl sabornuts-logo text-primary">Sabornuts</h1>
+            <h1 className="text-2xl md:text-3xl sabornuts-logo">Sabornuts</h1>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -424,7 +444,7 @@ export default function ProductsPage() {
       </header>
 
       <div className="container mx-auto px-4 py-6">
-        <Tabs defaultValue="all" onValueChange={setActiveCategory}>
+        <Tabs defaultValue="all" value={activeCategory} onValueChange={setActiveCategory}>
           <TabsList className="mb-6 w-full justify-start overflow-auto">
             {categories.map((category) => (
               <TabsTrigger key={category.id} value={category.id}>
@@ -449,7 +469,7 @@ export default function ProductsPage() {
                     <Card key={product.id} className="overflow-hidden transition-all hover:shadow-md">
                       <div className="aspect-square overflow-hidden bg-muted">
                         <img
-                          src={product.image || "/placeholder.svg"}
+                          src={product.image || "/placeholder.svg?height=200&width=200"}
                           alt={product.name}
                           className="h-full w-full object-cover transition-transform hover:scale-105"
                         />
